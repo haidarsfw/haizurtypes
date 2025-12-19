@@ -275,6 +275,7 @@ export default function App() {
   const theme = session.theme;
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const isMobile = useIsMobile();
 
@@ -349,7 +350,6 @@ export default function App() {
                 <button onClick={() => switchGameGlobal('boss')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition ${activeGame === 'boss' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--text-color)]'}`}>👹 Boss Mode</button>
                 <button onClick={() => switchGameGlobal('finish')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition ${activeGame === 'finish' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--text-color)]'}`}>🧠 Finish Sentence</button>
                 <button onClick={() => switchGameGlobal('letters')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition border border-[var(--main-color)] ${activeGame === 'letters' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--main-color)]'}`}>💌 Unlockable Letters</button>
-                <button onClick={() => switchGameGlobal('chat')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition border-2 border-pink-400 ${activeGame === 'chat' ? 'bg-pink-500 text-white' : 'text-pink-400'}`}>💬 Live Chat</button>
               </div>
               <div className="text-[var(--sub-color)] text-xs font-bold uppercase mb-4 tracking-widest">Global Theme</div>
               <div className="flex gap-2 mb-8">
@@ -381,8 +381,55 @@ export default function App() {
         {activeGame === 'sky' && <NightSky otherUsers={otherUsers} />}
         {activeGame === 'boss' && <BossMode otherUsers={otherUsers} session={session} updateSession={updateSession} />}
         {activeGame === 'letters' && <LoveLetters otherUsers={otherUsers} />}
-        {activeGame === 'chat' && <LiveChat theme={theme} />}
       </div>
+
+      {/* Floating Chat Button */}
+      <motion.button
+        onClick={() => setIsChatOpen(true)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-lg flex items-center justify-center text-2xl md:text-3xl"
+        style={{ backgroundColor: '#ff69b4', color: '#fff' }}
+      >
+        💬
+      </motion.button>
+
+      {/* Chat Popup Overlay */}
+      <AnimatePresence>
+        {isChatOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.7)] backdrop-blur-sm flex items-end md:items-center justify-center"
+            onClick={() => setIsChatOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full md:w-auto md:min-w-[500px] max-h-[90vh] md:max-h-[80vh] bg-[var(--bg-color)] rounded-t-3xl md:rounded-2xl overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Chat Header with Close Button */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sub-color)] border-opacity-20 bg-gradient-to-r from-pink-500 to-pink-400">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">💬</span>
+                  <span className="font-bold text-white">Live Chat</span>
+                </div>
+                <button
+                  onClick={() => setIsChatOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition"
+                >
+                  ✕
+                </button>
+              </div>
+              <LiveChat theme={theme} isPopup={true} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="w-full max-w-6xl flex flex-col items-center gap-2 text-[var(--sub-color)] text-sm opacity-50 mb-6">
         <div className="flex gap-8"><div className="flex items-center gap-2"><span className="bg-[var(--sub-color)] text-[var(--bg-color)] px-2 py-0.5 rounded text-xs font-bold">tab</span> - restart</div><div className="flex items-center gap-2"><span className="bg-[var(--sub-color)] text-[var(--bg-color)] px-2 py-0.5 rounded text-xs font-bold">esc</span> - menu</div></div>

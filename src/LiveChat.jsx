@@ -11,7 +11,7 @@ import {
     limit
 } from "firebase/firestore";
 
-const LiveChat = ({ theme }) => {
+const LiveChat = ({ theme, isPopup = false }) => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState("");
     const [role, setRole] = useState(null); // 'haidar' or 'princess'
@@ -243,28 +243,52 @@ const LiveChat = ({ theme }) => {
 
     // Chat interface
     return (
-        <div className="w-full max-w-2xl h-[70vh] flex flex-col bg-[rgba(0,0,0,0.1)] rounded-2xl overflow-hidden mx-4">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sub-color)] border-opacity-20">
-                <div className="flex items-center gap-3">
-                    <span className="text-2xl">{role === "haidar" ? "⭐" : "👸"}</span>
-                    <div>
-                        <div className="font-bold text-[var(--text-color)] text-sm">
-                            {role === "haidar" ? "Haidar" : "Princess"}
+        <div className={`flex flex-col ${isPopup ? 'h-[60vh] md:h-[65vh]' : 'w-full max-w-2xl h-[70vh] bg-[rgba(0,0,0,0.1)] rounded-2xl mx-4'} overflow-hidden`}>
+            {/* Header - only show if not popup (popup has its own header) */}
+            {!isPopup && (
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sub-color)] border-opacity-20">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">{role === "haidar" ? "⭐" : "👸"}</span>
+                        <div>
+                            <div className="font-bold text-[var(--text-color)] text-sm">
+                                {role === "haidar" ? "Haidar" : "Princess"}
+                            </div>
+                            <div className="text-xs text-[var(--sub-color)]">Online</div>
                         </div>
-                        <div className="text-xs text-[var(--sub-color)]">Online</div>
                     </div>
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem("haizur-chat-role");
+                            setRole(null);
+                        }}
+                        className="text-xs text-[var(--sub-color)] hover:text-[var(--text-color)] transition"
+                    >
+                        Switch
+                    </button>
                 </div>
-                <button
-                    onClick={() => {
-                        localStorage.removeItem("haizur-chat-role");
-                        setRole(null);
-                    }}
-                    className="text-xs text-[var(--sub-color)] hover:text-[var(--text-color)] transition"
-                >
-                    Switch
-                </button>
-            </div>
+            )}
+
+            {/* Compact header for popup mode */}
+            {isPopup && (
+                <div className="flex items-center justify-between px-4 py-2 bg-[rgba(0,0,0,0.05)]">
+                    <div className="flex items-center gap-2">
+                        <span className="text-lg">{role === "haidar" ? "⭐" : "👸"}</span>
+                        <span className="font-bold text-[var(--text-color)] text-sm">
+                            {role === "haidar" ? "Haidar" : "Princess"}
+                        </span>
+                        <span className="text-xs text-green-400">● online</span>
+                    </div>
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem("haizur-chat-role");
+                            setRole(null);
+                        }}
+                        className="text-xs text-[var(--sub-color)] hover:text-[var(--text-color)] transition px-2 py-1 rounded bg-[rgba(0,0,0,0.1)]"
+                    >
+                        Switch User
+                    </button>
+                </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -318,8 +342,8 @@ const LiveChat = ({ theme }) => {
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <form onSubmit={sendMessage} className="p-3 border-t border-[var(--sub-color)] border-opacity-20">
+            {/* Input - optimized for mobile */}
+            <form onSubmit={sendMessage} className="p-3 border-t border-[var(--sub-color)] border-opacity-20 bg-[var(--bg-color)]">
                 <div className="flex gap-2">
                     <input
                         ref={inputRef}
@@ -327,7 +351,10 @@ const LiveChat = ({ theme }) => {
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Type a message..."
-                        className="flex-1 px-4 py-3 rounded-xl bg-[var(--bg-color)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] transition"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        className="flex-1 px-4 py-3 rounded-xl bg-[rgba(0,0,0,0.1)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] transition text-base"
+                        style={{ fontSize: '16px' }} // Prevents iOS zoom
                     />
                     <motion.button
                         type="submit"
