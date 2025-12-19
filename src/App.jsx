@@ -383,15 +383,26 @@ export default function App() {
         {activeGame === 'letters' && <LoveLetters otherUsers={otherUsers} />}
       </div>
 
-      {/* Floating Chat Button */}
+      {/* Floating Chat Button - Clean Modern Design */}
       <motion.button
         onClick={() => setIsChatOpen(true)}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-lg flex items-center justify-center text-2xl md:text-3xl"
-        style={{ backgroundColor: '#ff69b4', color: '#fff' }}
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        whileHover={{ scale: 1.08, y: -2 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-5 right-5 z-40 w-12 h-12 md:w-14 md:h-14 rounded-2xl shadow-lg flex items-center justify-center group overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
+          boxShadow: '0 4px 15px rgba(236, 72, 153, 0.4)'
+        }}
       >
-        💬
+        <motion.span
+          className="text-xl md:text-2xl"
+          animate={{ rotate: [0, -10, 10, 0] }}
+          transition={{ repeat: Infinity, repeatDelay: 3, duration: 0.5 }}
+        >
+          💬
+        </motion.span>
       </motion.button>
 
       {/* Chat Popup Overlay */}
@@ -401,29 +412,35 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.7)] backdrop-blur-sm flex items-end md:items-center justify-center"
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
             onClick={() => setIsChatOpen(false)}
           >
             <motion.div
-              initial={{ y: 100, opacity: 0 }}
+              initial={{ y: "100%", opacity: 0.5 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full md:w-auto md:min-w-[500px] max-h-[90vh] md:max-h-[80vh] bg-[var(--bg-color)] rounded-t-3xl md:rounded-2xl overflow-hidden shadow-2xl"
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              className="w-full md:w-[450px] md:max-w-[90vw] max-h-[92vh] md:max-h-[85vh] bg-[var(--bg-color)] rounded-t-[28px] md:rounded-2xl overflow-hidden shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Chat Header with Close Button */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sub-color)] border-opacity-20 bg-gradient-to-r from-pink-500 to-pink-400">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">💬</span>
-                  <span className="font-bold text-white">Live Chat</span>
+              {/* Clean Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-pink-500 via-pink-400 to-rose-400">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">💬</span>
+                  <div>
+                    <span className="font-semibold text-white text-sm">Live Chat</span>
+                    <span className="text-white/70 text-[10px] ml-2">real-time</span>
+                  </div>
                 </div>
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.1, rotate: 90 }}
+                  whileTap={{ scale: 0.9 }}
                   onClick={() => setIsChatOpen(false)}
-                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition"
+                  className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white text-sm font-light transition-colors"
                 >
                   ✕
-                </button>
+                </motion.button>
               </div>
               <LiveChat theme={theme} isPopup={true} />
             </motion.div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { firestore } from "./firebase";
 import {
@@ -17,71 +17,32 @@ import {
 
 // Chat theme presets
 const CHAT_THEMES = {
-    default: {
-        name: "Default",
-        myBubble: "var(--main-color)",
-        theirBubble: "#ff69b4",
-        background: "transparent",
-        emoji: "💬"
-    },
-    love: {
-        name: "Love",
-        myBubble: "#e74c3c",
-        theirBubble: "#ff69b4",
-        background: "linear-gradient(135deg, rgba(255,105,180,0.1), rgba(231,76,60,0.1))",
-        emoji: "❤️"
-    },
-    ocean: {
-        name: "Ocean",
-        myBubble: "#3498db",
-        theirBubble: "#1abc9c",
-        background: "linear-gradient(135deg, rgba(52,152,219,0.1), rgba(26,188,156,0.1))",
-        emoji: "🌊"
-    },
-    sunset: {
-        name: "Sunset",
-        myBubble: "#e67e22",
-        theirBubble: "#9b59b6",
-        background: "linear-gradient(135deg, rgba(230,126,34,0.1), rgba(155,89,182,0.1))",
-        emoji: "🌅"
-    },
-    forest: {
-        name: "Forest",
-        myBubble: "#27ae60",
-        theirBubble: "#2ecc71",
-        background: "linear-gradient(135deg, rgba(39,174,96,0.1), rgba(46,204,113,0.1))",
-        emoji: "🌲"
-    },
-    galaxy: {
-        name: "Galaxy",
-        myBubble: "#8e44ad",
-        theirBubble: "#2c3e50",
-        background: "linear-gradient(135deg, rgba(142,68,173,0.15), rgba(44,62,80,0.15))",
-        emoji: "🌌"
-    }
+    default: { name: "Classic", myBubble: "#646cff", theirBubble: "#ec4899", bg: "transparent", emoji: "💬" },
+    love: { name: "Love", myBubble: "#ef4444", theirBubble: "#ec4899", bg: "linear-gradient(180deg, rgba(236,72,153,0.05) 0%, transparent 100%)", emoji: "❤️" },
+    ocean: { name: "Ocean", myBubble: "#0ea5e9", theirBubble: "#14b8a6", bg: "linear-gradient(180deg, rgba(14,165,233,0.05) 0%, transparent 100%)", emoji: "🌊" },
+    sunset: { name: "Sunset", myBubble: "#f97316", theirBubble: "#a855f7", bg: "linear-gradient(180deg, rgba(249,115,22,0.05) 0%, transparent 100%)", emoji: "🌅" },
+    forest: { name: "Forest", myBubble: "#22c55e", theirBubble: "#10b981", bg: "linear-gradient(180deg, rgba(34,197,94,0.05) 0%, transparent 100%)", emoji: "🌲" },
+    galaxy: { name: "Galaxy", myBubble: "#8b5cf6", theirBubble: "#6366f1", bg: "linear-gradient(180deg, rgba(139,92,246,0.08) 0%, transparent 100%)", emoji: "🌌" }
 };
 
 // Sticker packs
 const STICKER_PACKS = {
-    love: ["❤️", "💕", "💖", "💗", "💓", "💞", "💘", "💝", "😍", "🥰", "😘", "💋"],
-    cute: ["🥺", "🤗", "😊", "☺️", "🥹", "😚", "🤭", "😋", "🙈", "🐰", "🦋", "🌸"],
-    reactions: ["😂", "😭", "🔥", "✨", "💀", "😱", "🤯", "😤", "🙄", "👀", "💯", "🎉"],
-    animals: ["🐱", "🐶", "🐻", "🦊", "🐼", "🐨", "🦁", "🐯", "🐰", "🐸", "🦄", "🐝"],
-    food: ["🍕", "🍔", "🍟", "🍦", "🍩", "🍪", "🧁", "🍰", "🍫", "☕", "🧋", "🍜"]
+    love: { emoji: "❤️", stickers: ["❤️", "💕", "💖", "💗", "💓", "💞", "💘", "💝", "😍", "🥰", "😘", "💋"] },
+    cute: { emoji: "🥺", stickers: ["🥺", "🤗", "😊", "☺️", "🥹", "😚", "🤭", "😋", "🙈", "🐰", "🦋", "🌸"] },
+    reactions: { emoji: "🔥", stickers: ["😂", "😭", "🔥", "✨", "💀", "😱", "🤯", "😤", "🙄", "👀", "💯", "🎉"] },
+    animals: { emoji: "🐱", stickers: ["🐱", "🐶", "🐻", "🦊", "🐼", "🐨", "🦁", "🐯", "🐰", "🐸", "🦄", "🐝"] },
+    food: { emoji: "🍕", stickers: ["🍕", "🍔", "🍟", "🍦", "🍩", "🍪", "🧁", "🍰", "🍫", "☕", "🧋", "🍜"] }
 };
 
-// Quick reactions for messages
-const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
-
-// Notification sound (base64 encoded short beep)
-const NOTIFICATION_SOUND = "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQ8LfK/NkG0DJGF/w86QVAQOToTT45lfAwJEn+XMdB0DA3OA5Nt1EQAFe7bqq04AAllv7t+RCQABSX7a9KYzAAFJl+jbkBQAA155+eGRFQADWYL18akZAwRQhPP0qBoDSn7++Z4PAgVUev7wnBECA1Rn/PWeEgMDVIL+85oRAwNYgP3znhQDAyxw/fOgFwMDVnz99Z0VAwNUfP71nRUDA1R8/fWdFQMDVHz99Z0VAwNUfP31nRUDA1R8/fWdFQMDVHz99Z0VA";
+const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
+const COMMON_EMOJIS = ["😀", "😂", "🥰", "😍", "😘", "🥺", "😭", "😤", "🔥", "✨", "💕", "❤️", "💖", "💗", "👍", "👏", "🙌", "🤗", "😱", "😴", "😋", "🎉", "💀", "👀", "🥱", "🤔", "🤭", "😈", "🙄", "💯", "🫶", "✌️"];
 
 const LiveChat = ({ theme, isPopup = false }) => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState("");
     const [role, setRole] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [notificationPermission, setNotificationPermission] = useState("default");
+    const [connectionStatus, setConnectionStatus] = useState("connecting");
     const [chatTheme, setChatTheme] = useState("default");
     const [showThemePicker, setShowThemePicker] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -89,34 +50,36 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const [activeStickerPack, setActiveStickerPack] = useState("love");
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [activeReactionMessage, setActiveReactionMessage] = useState(null);
+    const [error, setError] = useState(null);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const lastMessageCountRef = useRef(0);
     const isTabFocusedRef = useRef(true);
-    const audioRef = useRef(null);
-
-    // Initialize audio
-    useEffect(() => {
-        audioRef.current = new Audio(NOTIFICATION_SOUND);
-        audioRef.current.volume = 0.5;
-    }, []);
 
     // Play notification sound
-    const playSound = () => {
-        if (soundEnabled && audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(() => { });
-        }
-    };
+    const playSound = useCallback(() => {
+        if (!soundEnabled) return;
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = 800;
+            oscillator.type = "sine";
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+        } catch (e) { /* ignore */ }
+    }, [soundEnabled]);
 
-    // Track tab focus for notifications
+    // Track tab focus
     useEffect(() => {
-        const handleVisibilityChange = () => {
-            isTabFocusedRef.current = !document.hidden;
-        };
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+        const handleVisibility = () => { isTabFocusedRef.current = !document.hidden; };
+        document.addEventListener("visibilitychange", handleVisibility);
+        return () => document.removeEventListener("visibilitychange", handleVisibility);
     }, []);
 
     // Load saved settings
@@ -124,244 +87,222 @@ const LiveChat = ({ theme, isPopup = false }) => {
         const savedRole = localStorage.getItem("haizur-chat-role");
         const savedTheme = localStorage.getItem("haizur-chat-theme");
         const savedSound = localStorage.getItem("haizur-chat-sound");
-
         if (savedRole) setRole(savedRole);
-        if (savedTheme) setChatTheme(savedTheme);
+        if (savedTheme && CHAT_THEMES[savedTheme]) setChatTheme(savedTheme);
         if (savedSound !== null) setSoundEnabled(savedSound === "true");
-
         setIsLoading(false);
-
-        if ("Notification" in window) {
-            setNotificationPermission(Notification.permission);
-        }
     }, []);
 
-    // Save theme preference
-    useEffect(() => {
-        localStorage.setItem("haizur-chat-theme", chatTheme);
-    }, [chatTheme]);
+    // Save preferences
+    useEffect(() => { localStorage.setItem("haizur-chat-theme", chatTheme); }, [chatTheme]);
+    useEffect(() => { localStorage.setItem("haizur-chat-sound", String(soundEnabled)); }, [soundEnabled]);
 
-    // Save sound preference
-    useEffect(() => {
-        localStorage.setItem("haizur-chat-sound", soundEnabled.toString());
-    }, [soundEnabled]);
-
-    // Request notification permission
-    const requestNotificationPermission = async () => {
-        if (!("Notification" in window)) return;
+    // Show browser notification
+    const showNotification = useCallback((senderName, text) => {
+        if (Notification.permission !== "granted" || isTabFocusedRef.current) return;
         try {
-            const permission = await Notification.requestPermission();
-            setNotificationPermission(permission);
-        } catch (error) {
-            console.error("Error requesting notification permission:", error);
-        }
-    };
-
-    // Show notification for new message
-    const showNotification = (senderName, messageText) => {
-        if (notificationPermission !== "granted") return;
-        if (isTabFocusedRef.current) return;
-
-        try {
-            const notification = new Notification(`💬 ${senderName}`, {
-                body: messageText.substring(0, 100),
+            const n = new Notification(`💬 ${senderName}`, {
+                body: text?.substring(0, 100) || "Sent a sticker",
                 icon: "https://em-content.zobj.net/source/apple/391/sparkling-heart_1f496.png",
-                tag: "haizur-chat",
-                requireInteraction: false
+                tag: "haizur-chat"
             });
-            notification.onclick = () => {
-                window.focus();
-                notification.close();
-            };
-            setTimeout(() => notification.close(), 5000);
-        } catch (error) {
-            console.error("Error showing notification:", error);
-        }
-    };
+            n.onclick = () => { window.focus(); n.close(); };
+            setTimeout(() => n.close(), 4000);
+        } catch (e) { /* ignore */ }
+    }, []);
 
-    // Subscribe to messages from Firestore
+    // Subscribe to Firestore messages - REAL-TIME SYNC
     useEffect(() => {
         if (!role) return;
+
+        setConnectionStatus("connecting");
+        setError(null);
 
         const q = query(
             collection(firestore, "chat-messages"),
             orderBy("timestamp", "asc"),
-            limit(200)
+            limit(500)
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const msgs = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+        const unsubscribe = onSnapshot(q,
+            (snapshot) => {
+                setConnectionStatus("connected");
+                const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (msgs.length > lastMessageCountRef.current && lastMessageCountRef.current > 0) {
-                const latestMessage = msgs[msgs.length - 1];
-                if (latestMessage && latestMessage.sender !== role) {
-                    const senderName = latestMessage.sender === "princess" ? "Princess 👸" : "Haidar ⭐";
-                    showNotification(senderName, latestMessage.text || latestMessage.sticker || "");
-                    playSound();
+                // Check for new messages from partner
+                if (msgs.length > lastMessageCountRef.current && lastMessageCountRef.current > 0) {
+                    const latest = msgs[msgs.length - 1];
+                    if (latest?.sender !== role) {
+                        const name = latest.sender === "princess" ? "Princess 👸" : "Haidar ⭐";
+                        showNotification(name, latest.text || latest.sticker);
+                        playSound();
+                    }
                 }
+                lastMessageCountRef.current = msgs.length;
+                setMessages(msgs);
+            },
+            (err) => {
+                console.error("Firestore error:", err);
+                setConnectionStatus("error");
+                setError("Connection failed. Check Firebase rules.");
             }
-            lastMessageCountRef.current = msgs.length;
-            setMessages(msgs);
-        });
+        );
 
         return () => unsubscribe();
-    }, [role, notificationPermission, soundEnabled]);
+    }, [role, showNotification, playSound]);
 
-    // Auto-scroll to bottom
+    // Auto-scroll
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
     }, [messages]);
 
-    // Focus input after selecting role
+    // Focus input
     useEffect(() => {
-        if (role && inputRef.current) {
-            inputRef.current.focus();
-        }
-    }, [role]);
+        if (role && inputRef.current) setTimeout(() => inputRef.current?.focus(), 300);
+    }, [role, showEmojiPicker, showStickerPicker]);
 
     const selectRole = async (selectedRole) => {
         setRole(selectedRole);
         localStorage.setItem("haizur-chat-role", selectedRole);
-        await requestNotificationPermission();
+        if ("Notification" in window && Notification.permission === "default") {
+            await Notification.requestPermission();
+        }
     };
 
     const sendMessage = async (e) => {
         e?.preventDefault();
-        if (!newMessage.trim() || !role) return;
+        const text = newMessage.trim();
+        if (!text || !role) return;
 
-        const messageText = newMessage.trim();
         setNewMessage("");
         setShowEmojiPicker(false);
+        setShowStickerPicker(false);
 
         try {
             await addDoc(collection(firestore, "chat-messages"), {
-                text: messageText,
+                text,
                 sender: role,
                 timestamp: serverTimestamp(),
                 reactions: []
             });
-        } catch (error) {
-            console.error("Error sending message:", error);
-            setNewMessage(messageText);
+        } catch (err) {
+            console.error("Send error:", err);
+            setNewMessage(text);
+            setError("Failed to send. Try again.");
         }
     };
 
     const sendSticker = async (sticker) => {
         if (!role) return;
         setShowStickerPicker(false);
-
         try {
             await addDoc(collection(firestore, "chat-messages"), {
-                sticker: sticker,
+                sticker,
                 sender: role,
                 timestamp: serverTimestamp(),
                 reactions: []
             });
-        } catch (error) {
-            console.error("Error sending sticker:", error);
+        } catch (err) {
+            console.error("Send sticker error:", err);
         }
     };
 
-    const addReaction = async (messageId, emoji) => {
-        if (!role) return;
+    const toggleReaction = async (messageId, emoji) => {
+        if (!role || !messageId) return;
         setActiveReactionMessage(null);
 
         try {
-            const messageRef = doc(firestore, "chat-messages", messageId);
-            await updateDoc(messageRef, {
-                reactions: arrayUnion({ emoji, user: role })
-            });
-        } catch (error) {
-            console.error("Error adding reaction:", error);
+            const msg = messages.find(m => m.id === messageId);
+            const existingReaction = msg?.reactions?.find(r => r.emoji === emoji && r.user === role);
+            const ref = doc(firestore, "chat-messages", messageId);
+
+            if (existingReaction) {
+                await updateDoc(ref, { reactions: arrayRemove({ emoji, user: role }) });
+            } else {
+                await updateDoc(ref, { reactions: arrayUnion({ emoji, user: role }) });
+            }
+        } catch (err) {
+            console.error("Reaction error:", err);
         }
     };
 
-    const removeReaction = async (messageId, emoji) => {
-        if (!role) return;
-
-        try {
-            const messageRef = doc(firestore, "chat-messages", messageId);
-            await updateDoc(messageRef, {
-                reactions: arrayRemove({ emoji, user: role })
-            });
-        } catch (error) {
-            console.error("Error removing reaction:", error);
-        }
+    const formatTime = (ts) => {
+        if (!ts?.toDate) return "";
+        return ts.toDate().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     };
 
-    const addEmoji = (emoji) => {
-        setNewMessage(prev => prev + emoji);
-        inputRef.current?.focus();
-    };
-
-    const formatTime = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate();
-        return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    };
-
-    const formatDate = (timestamp) => {
-        if (!timestamp) return "";
-        const date = timestamp.toDate();
+    const formatDate = (ts) => {
+        if (!ts?.toDate) return "";
+        const d = ts.toDate();
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-
-        if (date.toDateString() === today.toDateString()) return "Today";
-        if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-        return date.toLocaleDateString([], { month: "short", day: "numeric" });
+        if (d.toDateString() === today.toDateString()) return "Today";
+        if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+        return d.toLocaleDateString([], { month: "short", day: "numeric" });
     };
 
-    const groupedMessages = messages.reduce((groups, message) => {
-        const dateKey = message.timestamp ? formatDate(message.timestamp) : "Now";
-        if (!groups[dateKey]) groups[dateKey] = [];
-        groups[dateKey].push(message);
-        return groups;
+    const groupedMessages = messages.reduce((acc, msg) => {
+        const key = msg.timestamp ? formatDate(msg.timestamp) : "Now";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(msg);
+        return acc;
     }, {});
 
     const currentTheme = CHAT_THEMES[chatTheme];
 
+    // Loading state
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-full">
-                <div className="text-[var(--sub-color)] animate-pulse">Loading...</div>
+            <div className="flex items-center justify-center h-64">
+                <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-[var(--main-color)] border-t-transparent rounded-full"
+                />
             </div>
         );
     }
 
-    // Role selection screen
+    // Role selection
     if (!role) {
         return (
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center justify-center gap-8 p-8"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center justify-center gap-6 p-8 min-h-[300px]"
             >
                 <div className="text-center">
-                    <h2 className="text-3xl font-bold text-[var(--text-color)] mb-2">💬 Live Chat</h2>
-                    <p className="text-[var(--sub-color)]">Who are you?</p>
+                    <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", delay: 0.1 }}
+                        className="text-5xl mb-4"
+                    >
+                        💬
+                    </motion.div>
+                    <h2 className="text-2xl font-bold text-[var(--text-color)] mb-1">Live Chat</h2>
+                    <p className="text-[var(--sub-color)] text-sm">Select your identity to start chatting</p>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                     <motion.button
-                        whileHover={{ scale: 1.05 }}
+                        whileHover={{ scale: 1.05, y: -2 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => selectRole("haidar")}
-                        className="px-8 py-4 rounded-xl font-bold text-lg transition-all"
-                        style={{ backgroundColor: "var(--main-color)", color: "var(--bg-color)" }}
+                        className="px-6 py-3 rounded-2xl font-semibold text-white shadow-lg"
+                        style={{ background: "linear-gradient(135deg, #646cff, #5558dd)" }}
                     >
                         ⭐ Haidar
                     </motion.button>
-
                     <motion.button
-                        whileHover={{ scale: 1.05 }}
+                        whileHover={{ scale: 1.05, y: -2 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => selectRole("princess")}
-                        className="px-8 py-4 rounded-xl font-bold text-lg transition-all"
-                        style={{ backgroundColor: "#ff69b4", color: "#fff" }}
+                        className="px-6 py-3 rounded-2xl font-semibold text-white shadow-lg"
+                        style={{ background: "linear-gradient(135deg, #ec4899, #db2777)" }}
                     >
                         👸 Princess
                     </motion.button>
@@ -373,172 +314,185 @@ const LiveChat = ({ theme, isPopup = false }) => {
     // Chat interface
     return (
         <div
-            className={`flex flex-col ${isPopup ? 'h-[60vh] md:h-[65vh]' : 'w-full max-w-2xl h-[70vh] rounded-2xl mx-4'} overflow-hidden`}
-            style={{ background: currentTheme.background }}
+            className={`flex flex-col ${isPopup ? 'h-[65vh] md:h-[70vh]' : 'w-full max-w-2xl h-[75vh] rounded-2xl mx-4'} overflow-hidden`}
+            style={{ background: currentTheme.bg }}
         >
-            {/* Compact header for popup mode */}
-            {isPopup && (
-                <div className="flex items-center justify-between px-4 py-2 bg-[rgba(0,0,0,0.05)]">
-                    <div className="flex items-center gap-2">
-                        <span className="text-lg">{role === "haidar" ? "⭐" : "👸"}</span>
-                        <span className="font-bold text-[var(--text-color)] text-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[rgba(0,0,0,0.03)] border-b border-[rgba(0,0,0,0.05)]">
+                <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <span className="text-xl">{role === "haidar" ? "⭐" : "👸"}</span>
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-color)] ${connectionStatus === "connected" ? "bg-green-500" :
+                                connectionStatus === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
+                            }`} />
+                    </div>
+                    <div>
+                        <span className="font-semibold text-[var(--text-color)] text-sm">
                             {role === "haidar" ? "Haidar" : "Princess"}
                         </span>
-                        <span className="text-xs text-green-400">● online</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {/* Theme picker button */}
-                        <button
-                            onClick={() => setShowThemePicker(!showThemePicker)}
-                            className="text-lg hover:scale-110 transition"
-                            title="Change theme"
-                        >
-                            🎨
-                        </button>
-                        {/* Sound toggle */}
-                        <button
-                            onClick={() => setSoundEnabled(!soundEnabled)}
-                            className="text-lg hover:scale-110 transition"
-                            title={soundEnabled ? "Mute" : "Unmute"}
-                        >
-                            {soundEnabled ? "🔔" : "🔕"}
-                        </button>
-                        {/* Switch user */}
-                        <button
-                            onClick={() => {
-                                localStorage.removeItem("haizur-chat-role");
-                                setRole(null);
-                            }}
-                            className="text-xs text-[var(--sub-color)] hover:text-[var(--text-color)] transition px-2 py-1 rounded bg-[rgba(0,0,0,0.1)]"
-                        >
-                            Switch
-                        </button>
+                        <span className="text-[10px] text-[var(--sub-color)] ml-2">
+                            {connectionStatus === "connected" ? "● live" : connectionStatus === "connecting" ? "connecting..." : "offline"}
+                        </span>
                     </div>
                 </div>
-            )}
+                <div className="flex items-center gap-1">
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => { setShowThemePicker(!showThemePicker); setShowEmojiPicker(false); setShowStickerPicker(false); }}
+                        className={`p-2 rounded-full transition-colors ${showThemePicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                    >
+                        🎨
+                    </motion.button>
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setSoundEnabled(!soundEnabled)}
+                        className="p-2 rounded-full hover:bg-[rgba(0,0,0,0.05)] transition-colors"
+                    >
+                        {soundEnabled ? "🔔" : "🔕"}
+                    </motion.button>
+                    <button
+                        onClick={() => { localStorage.removeItem("haizur-chat-role"); setRole(null); }}
+                        className="text-xs text-[var(--sub-color)] hover:text-[var(--text-color)] px-2 py-1 rounded-lg hover:bg-[rgba(0,0,0,0.05)] transition-colors ml-1"
+                    >
+                        Switch
+                    </button>
+                </div>
+            </div>
 
-            {/* Theme picker dropdown */}
+            {/* Theme picker */}
             <AnimatePresence>
                 {showThemePicker && (
                     <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="bg-[var(--bg-color)] border-b border-[var(--sub-color)] border-opacity-20 px-4 py-2"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden bg-[var(--bg-color)] border-b border-[rgba(0,0,0,0.05)]"
                     >
-                        <div className="flex gap-2 flex-wrap">
+                        <div className="flex gap-2 p-3 overflow-x-auto">
                             {Object.entries(CHAT_THEMES).map(([key, t]) => (
-                                <button
+                                <motion.button
                                     key={key}
-                                    onClick={() => {
-                                        setChatTheme(key);
-                                        setShowThemePicker(false);
-                                    }}
-                                    className={`px-3 py-1 rounded-full text-sm flex items-center gap-1 transition ${chatTheme === key
-                                            ? "bg-[var(--main-color)] text-white"
-                                            : "bg-[rgba(0,0,0,0.1)] hover:bg-[rgba(0,0,0,0.2)]"
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => { setChatTheme(key); setShowThemePicker(false); }}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${chatTheme === key
+                                            ? "bg-[var(--main-color)] text-white shadow-md"
+                                            : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] hover:bg-[rgba(0,0,0,0.1)]"
                                         }`}
                                 >
                                     {t.emoji} {t.name}
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
+            {/* Error banner */}
+            {error && (
+                <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: "auto" }}
+                    className="bg-red-500/10 text-red-500 text-xs px-4 py-2 text-center"
+                >
+                    {error}
+                </motion.div>
+            )}
+
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {Object.entries(groupedMessages).map(([date, dateMessages]) => (
+            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+                {Object.entries(groupedMessages).map(([date, msgs]) => (
                     <div key={date}>
-                        <div className="flex items-center justify-center my-4">
-                            <span className="text-xs text-[var(--sub-color)] bg-[var(--bg-color)] px-3 py-1 rounded-full">
+                        <div className="flex justify-center my-4">
+                            <span className="text-[10px] text-[var(--sub-color)] bg-[rgba(0,0,0,0.05)] px-3 py-1 rounded-full">
                                 {date}
                             </span>
                         </div>
 
-                        {dateMessages.map((message, idx) => {
-                            const isMe = message.sender === role;
-                            const isPrincess = message.sender === "princess";
+                        {msgs.map((msg, idx) => {
+                            const isMe = msg.sender === role;
                             const bubbleColor = isMe ? currentTheme.myBubble : currentTheme.theirBubble;
-                            const reactions = message.reactions || [];
+                            const reactions = msg.reactions || [];
+                            const isSticker = !!msg.sticker;
 
                             return (
                                 <motion.div
-                                    key={message.id || idx}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
+                                    key={msg.id || idx}
+                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ duration: 0.2, ease: "easeOut" }}
                                     className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2`}
                                 >
-                                    <div className="relative group">
-                                        {/* Message bubble */}
-                                        <div
-                                            className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"
-                                                } cursor-pointer`}
-                                            style={{ backgroundColor: bubbleColor, color: "#fff" }}
-                                            onClick={() => setActiveReactionMessage(
-                                                activeReactionMessage === message.id ? null : message.id
-                                            )}
+                                    <div className="relative max-w-[80%]">
+                                        <motion.div
+                                            whileTap={{ scale: 0.98 }}
+                                            onClick={() => setActiveReactionMessage(activeReactionMessage === msg.id ? null : msg.id)}
+                                            className={`cursor-pointer ${isSticker ? 'p-2' : 'px-3.5 py-2'} rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"
+                                                }`}
+                                            style={{
+                                                backgroundColor: isSticker ? 'transparent' : bubbleColor,
+                                                color: isSticker ? 'inherit' : '#fff'
+                                            }}
                                         >
-                                            {message.sticker ? (
-                                                <span className="text-5xl">{message.sticker}</span>
+                                            {isSticker ? (
+                                                <motion.span
+                                                    className="text-6xl block"
+                                                    initial={{ scale: 0 }}
+                                                    animate={{ scale: 1 }}
+                                                    transition={{ type: "spring", stiffness: 400 }}
+                                                >
+                                                    {msg.sticker}
+                                                </motion.span>
                                             ) : (
-                                                <p className="text-sm break-words">{message.text}</p>
+                                                <p className="text-sm leading-relaxed break-words">{msg.text}</p>
                                             )}
-                                            <p className="text-[10px] mt-1 opacity-70 text-right">
-                                                {formatTime(message.timestamp)}
-                                            </p>
-                                        </div>
+                                            {!isSticker && (
+                                                <p className="text-[9px] opacity-60 text-right mt-0.5">
+                                                    {formatTime(msg.timestamp)}
+                                                </p>
+                                            )}
+                                        </motion.div>
 
-                                        {/* Reactions display */}
+                                        {/* Reactions */}
                                         {reactions.length > 0 && (
-                                            <div className={`absolute -bottom-3 ${isMe ? "right-2" : "left-2"} flex gap-0.5`}>
-                                                {[...new Set(reactions.map(r => r.emoji))].map((emoji, i) => (
-                                                    <span
+                                            <div className={`absolute -bottom-2 ${isMe ? "right-1" : "left-1"} flex gap-0.5`}>
+                                                {[...new Set(reactions.map(r => r.emoji))].slice(0, 4).map((emoji, i) => (
+                                                    <motion.span
                                                         key={i}
-                                                        className="text-sm bg-[var(--bg-color)] rounded-full px-1 shadow-sm cursor-pointer"
-                                                        onClick={() => {
-                                                            const myReaction = reactions.find(
-                                                                r => r.emoji === emoji && r.user === role
-                                                            );
-                                                            if (myReaction) {
-                                                                removeReaction(message.id, emoji);
-                                                            } else {
-                                                                addReaction(message.id, emoji);
-                                                            }
-                                                        }}
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        className="text-xs bg-[var(--bg-color)] shadow-sm rounded-full px-1 cursor-pointer hover:scale-110 transition-transform"
+                                                        onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
                                                     >
                                                         {emoji}
-                                                        {reactions.filter(r => r.emoji === emoji).length > 1 && (
-                                                            <span className="text-[10px] text-[var(--sub-color)]">
-                                                                {reactions.filter(r => r.emoji === emoji).length}
-                                                            </span>
-                                                        )}
-                                                    </span>
+                                                    </motion.span>
                                                 ))}
                                             </div>
                                         )}
 
                                         {/* Quick reactions popup */}
                                         <AnimatePresence>
-                                            {activeReactionMessage === message.id && (
+                                            {activeReactionMessage === msg.id && (
                                                 <motion.div
-                                                    initial={{ opacity: 0, scale: 0.8 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.8 }}
-                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-10 bg-[var(--bg-color)] rounded-full shadow-lg px-2 py-1 flex gap-1 z-10`}
+                                                    initial={{ opacity: 0, y: 5, scale: 0.9 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: 5, scale: 0.9 }}
+                                                    transition={{ duration: 0.15 }}
+                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-9 bg-[var(--bg-color)] shadow-lg rounded-full px-1.5 py-1 flex gap-0.5 z-20 border border-[rgba(0,0,0,0.05)]`}
                                                 >
                                                     {QUICK_REACTIONS.map((emoji) => (
-                                                        <button
+                                                        <motion.button
                                                             key={emoji}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                addReaction(message.id, emoji);
-                                                            }}
-                                                            className="text-lg hover:scale-125 transition"
+                                                            whileHover={{ scale: 1.3 }}
+                                                            whileTap={{ scale: 0.9 }}
+                                                            onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
+                                                            className="text-lg p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
                                                         >
                                                             {emoji}
-                                                        </button>
+                                                        </motion.button>
                                                     ))}
                                                 </motion.div>
                                             )}
@@ -556,20 +510,23 @@ const LiveChat = ({ theme, isPopup = false }) => {
             <AnimatePresence>
                 {showEmojiPicker && (
                     <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="bg-[var(--bg-color)] border-t border-[var(--sub-color)] border-opacity-20 p-3 max-h-40 overflow-y-auto"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden bg-[var(--bg-color)] border-t border-[rgba(0,0,0,0.05)]"
                     >
-                        <div className="grid grid-cols-8 gap-2">
-                            {["😀", "😂", "🥰", "😍", "😘", "🥺", "😭", "😤", "🔥", "✨", "💕", "❤️", "💖", "💗", "💓", "💞", "👍", "👎", "👏", "🙌", "🤗", "🤔", "🤭", "😱", "😴", "🥱", "😋", "🤤", "🎉", "🎊", "💀", "👀"].map((emoji) => (
-                                <button
+                        <div className="grid grid-cols-8 gap-1 p-3 max-h-32 overflow-y-auto">
+                            {COMMON_EMOJIS.map((emoji) => (
+                                <motion.button
                                     key={emoji}
-                                    onClick={() => addEmoji(emoji)}
-                                    className="text-2xl hover:scale-125 transition"
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={() => { setNewMessage(prev => prev + emoji); inputRef.current?.focus(); }}
+                                    className="text-xl p-1 rounded-lg hover:bg-[rgba(0,0,0,0.05)] transition-colors"
                                 >
                                     {emoji}
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </motion.div>
@@ -580,92 +537,90 @@ const LiveChat = ({ theme, isPopup = false }) => {
             <AnimatePresence>
                 {showStickerPicker && (
                     <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="bg-[var(--bg-color)] border-t border-[var(--sub-color)] border-opacity-20 p-3"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden bg-[var(--bg-color)] border-t border-[rgba(0,0,0,0.05)]"
                     >
-                        {/* Pack tabs */}
-                        <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
-                            {Object.keys(STICKER_PACKS).map((pack) => (
+                        <div className="flex gap-1 px-3 pt-3 overflow-x-auto">
+                            {Object.entries(STICKER_PACKS).map(([key, pack]) => (
                                 <button
-                                    key={pack}
-                                    onClick={() => setActiveStickerPack(pack)}
-                                    className={`px-3 py-1 rounded-full text-sm capitalize whitespace-nowrap transition ${activeStickerPack === pack
+                                    key={key}
+                                    onClick={() => setActiveStickerPack(key)}
+                                    className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-all ${activeStickerPack === key
                                             ? "bg-[var(--main-color)] text-white"
-                                            : "bg-[rgba(0,0,0,0.1)] text-[var(--text-color)]"
+                                            : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)]"
                                         }`}
                                 >
-                                    {pack}
+                                    {pack.emoji}
                                 </button>
                             ))}
                         </div>
-                        {/* Stickers grid */}
-                        <div className="grid grid-cols-6 gap-2">
-                            {STICKER_PACKS[activeStickerPack].map((sticker, idx) => (
-                                <button
+                        <div className="grid grid-cols-6 gap-1 p-3">
+                            {STICKER_PACKS[activeStickerPack].stickers.map((sticker, idx) => (
+                                <motion.button
                                     key={idx}
+                                    whileHover={{ scale: 1.15 }}
+                                    whileTap={{ scale: 0.9 }}
                                     onClick={() => sendSticker(sticker)}
-                                    className="text-3xl hover:scale-125 transition p-2 rounded-lg hover:bg-[rgba(0,0,0,0.1)]"
+                                    className="text-3xl p-2 rounded-xl hover:bg-[rgba(0,0,0,0.05)] transition-colors"
                                 >
                                     {sticker}
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Input */}
-            <form onSubmit={sendMessage} className="p-3 border-t border-[var(--sub-color)] border-opacity-20 bg-[var(--bg-color)]">
-                <div className="flex gap-2 items-center">
-                    {/* Sticker button */}
-                    <button
+            {/* Input area */}
+            <form onSubmit={sendMessage} className="p-3 bg-[var(--bg-color)] border-t border-[rgba(0,0,0,0.05)]">
+                <div className="flex items-center gap-2">
+                    <motion.button
                         type="button"
-                        onClick={() => {
-                            setShowStickerPicker(!showStickerPicker);
-                            setShowEmojiPicker(false);
-                        }}
-                        className={`text-xl p-2 rounded-lg transition ${showStickerPicker ? "bg-[var(--main-color)] text-white" : "hover:bg-[rgba(0,0,0,0.1)]"}`}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => { setShowStickerPicker(!showStickerPicker); setShowEmojiPicker(false); setShowThemePicker(false); }}
+                        className={`p-2.5 rounded-full transition-colors ${showStickerPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
                     >
                         🎭
-                    </button>
-                    {/* Emoji button */}
-                    <button
+                    </motion.button>
+                    <motion.button
                         type="button"
-                        onClick={() => {
-                            setShowEmojiPicker(!showEmojiPicker);
-                            setShowStickerPicker(false);
-                        }}
-                        className={`text-xl p-2 rounded-lg transition ${showEmojiPicker ? "bg-[var(--main-color)] text-white" : "hover:bg-[rgba(0,0,0,0.1)]"}`}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowStickerPicker(false); setShowThemePicker(false); }}
+                        className={`p-2.5 rounded-full transition-colors ${showEmojiPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
                     >
                         😊
-                    </button>
-                    {/* Input field */}
+                    </motion.button>
                     <input
                         ref={inputRef}
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Type a message..."
+                        placeholder="Message..."
                         autoComplete="off"
-                        autoCorrect="off"
-                        className="flex-1 px-4 py-3 rounded-xl bg-[rgba(0,0,0,0.1)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] transition text-base"
+                        className="flex-1 px-4 py-2.5 rounded-2xl bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] focus:ring-opacity-50 transition-all text-sm"
                         style={{ fontSize: '16px' }}
                     />
-                    {/* Send button */}
                     <motion.button
                         type="submit"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         disabled={!newMessage.trim()}
-                        className="px-5 py-3 rounded-xl font-bold transition-all disabled:opacity-50"
+                        className="p-2.5 rounded-full font-semibold transition-all disabled:opacity-30"
                         style={{
-                            backgroundColor: role === "princess" ? "#ff69b4" : "var(--main-color)",
-                            color: "#fff"
+                            background: newMessage.trim()
+                                ? `linear-gradient(135deg, ${role === "princess" ? "#ec4899, #db2777" : "#646cff, #5558dd"})`
+                                : "rgba(0,0,0,0.1)",
+                            color: newMessage.trim() ? "#fff" : "var(--sub-color)"
                         }}
                     >
-                        Send
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                        </svg>
                     </motion.button>
                 </div>
             </form>
