@@ -969,7 +969,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                     <div className="relative max-w-[80%]">
                                         <motion.div
                                             whileTap={{ scale: 0.98 }}
-                                            onClick={() => {
+                                            onClick={(e) => {
+                                                e.stopPropagation();
                                                 if (isVoice) {
                                                     playVoiceMessage(msg.id, msg.voiceMessage);
                                                 } else {
