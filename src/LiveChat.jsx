@@ -56,6 +56,10 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [playingVoiceId, setPlayingVoiceId] = useState(null);
+    const [showStarred, setShowStarred] = useState(false);
+    const [customStickers, setCustomStickers] = useState([]);
+    const [imagePreview, setImagePreview] = useState(null);
+    const [sendingImage, setSendingImage] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -65,6 +69,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const audioChunksRef = useRef([]);
     const recordingTimerRef = useRef(null);
     const audioPlayerRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const stickerInputRef = useRef(null);
 
     // Play notification sound
     const playSound = useCallback(() => {
@@ -246,8 +252,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             voiceDuration: recordingTime,
                             sender: role,
                             timestamp: serverTimestamp(),
-                            expiresAt: Date.now() + (2 * 60 * 1000), // 2 minutes from now
-                            reactions: []
+                            reactions: [],
+                            starred: false
                         });
                     } catch (err) {
                         console.error("Voice send error:", err);
@@ -320,10 +326,9 @@ const LiveChat = ({ theme, isPopup = false }) => {
         setPlayingVoiceId(messageId);
     };
 
-    // Check if voice message expired (2 min)
+    // Voice messages no longer expire
     const isVoiceExpired = (msg) => {
-        if (!msg.expiresAt) return false;
-        return Date.now() > msg.expiresAt;
+        return false; // Disabled expiry
     };
 
     const formatRecordingTime = (seconds) => {
@@ -350,6 +355,132 @@ const LiveChat = ({ theme, isPopup = false }) => {
             console.error("Reaction error:", err);
         }
     };
+
+    // Star/unstar a message
+    const toggleStar = async (messageId) => {
+        if (!messageId) return;
+        try {
+            const msg = messages.find(m => m.id === messageId);
+            const ref = doc(firestore, "chat-messages", messageId);
+            await updateDoc(ref, { starred: !msg?.starred });
+        } catch (err) {
+            console.error("Star error:", err);
+        }
+    };
+
+    // Load custom stickers from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem("haizur-custom-stickers");
+        if (saved) {
+            try {
+                setCustomStickers(JSON.parse(saved));
+            } catch (e) { /* ignore */ }
+        }
+    }, []);
+
+    // Save custom stickers to localStorage
+    const saveCustomStickers = (stickers) => {
+        setCustomStickers(stickers);
+        localStorage.setItem("haizur-custom-stickers", JSON.stringify(stickers));
+    };
+
+    // Compress image to reduce size
+    const compressImage = (file, maxWidth = 400, quality = 0.7) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // Handle image file selection
+    const handleImageSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            setError("Please select an image file");
+            return;
+        }
+
+        try {
+            const compressed = await compressImage(file, 600, 0.8);
+            setImagePreview(compressed);
+        } catch (err) {
+            setError("Failed to process image");
+        }
+        e.target.value = '';
+    };
+
+    // Handle custom sticker upload
+    const handleStickerUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !file.type.startsWith('image/')) return;
+
+        try {
+            // Smaller size for stickers
+            const compressed = await compressImage(file, 150, 0.8);
+            const newStickers = [...customStickers, compressed].slice(-12); // Max 12 custom stickers
+            saveCustomStickers(newStickers);
+        } catch (err) {
+            setError("Failed to add sticker");
+        }
+        e.target.value = '';
+    };
+
+    // Remove custom sticker
+    const removeCustomSticker = (index) => {
+        const newStickers = customStickers.filter((_, i) => i !== index);
+        saveCustomStickers(newStickers);
+    };
+
+    // Send image message
+    const sendImage = async () => {
+        if (!imagePreview || !role) return;
+        setSendingImage(true);
+
+        try {
+            await addDoc(collection(firestore, "chat-messages"), {
+                image: imagePreview,
+                sender: role,
+                timestamp: serverTimestamp(),
+                reactions: [],
+                starred: false
+            });
+            setImagePreview(null);
+        } catch (err) {
+            console.error("Send image error:", err);
+            setError("Failed to send image");
+        }
+        setSendingImage(false);
+    };
+
+    // Cancel image preview
+    const cancelImagePreview = () => {
+        setImagePreview(null);
+    };
+
+    // Get starred messages
+    const starredMessages = messages.filter(m => m.starred);
 
     const formatTime = (ts) => {
         if (!ts?.toDate) return "";
@@ -469,6 +600,16 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     >
                         📞
                     </motion.button>
+                    {/* Starred messages button */}
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setShowStarred(!showStarred)}
+                        className={`p-2 rounded-full transition-colors ${showStarred ? 'bg-yellow-400 text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                        title="Starred Messages"
+                    >
+                        ⭐
+                    </motion.button>
                     <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
@@ -551,6 +692,7 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             const reactions = msg.reactions || [];
                             const isSticker = !!msg.sticker;
                             const isVoice = !!msg.voiceMessage;
+                            const isImage = !!msg.image;
                             const voiceExpired = isVoice && isVoiceExpired(msg);
 
                             // Don't render expired voice messages (or show as expired)
@@ -590,12 +732,17 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                     setActiveReactionMessage(activeReactionMessage === msg.id ? null : msg.id);
                                                 }
                                             }}
-                                            className={`cursor-pointer ${isSticker ? 'p-2' : 'px-3.5 py-2'} rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"}`}
+                                            className={`cursor-pointer ${isSticker ? 'p-2' : isImage ? 'p-1' : 'px-3.5 py-2'} rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"}`}
                                             style={{
-                                                backgroundColor: isSticker ? 'transparent' : bubbleColor,
-                                                color: isSticker ? 'inherit' : '#fff'
+                                                backgroundColor: isSticker || isImage ? 'transparent' : bubbleColor,
+                                                color: isSticker || isImage ? 'inherit' : '#fff'
                                             }}
                                         >
+                                            {/* Starred indicator */}
+                                            {msg.starred && (
+                                                <span className="absolute -top-1 -right-1 text-xs">⭐</span>
+                                            )}
+
                                             {isSticker ? (
                                                 <motion.span
                                                     className="text-6xl block"
@@ -605,6 +752,14 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                 >
                                                     {msg.sticker}
                                                 </motion.span>
+                                            ) : isImage ? (
+                                                <motion.img
+                                                    src={msg.image}
+                                                    alt="Shared image"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    className="max-w-[250px] max-h-[200px] rounded-xl object-cover"
+                                                />
                                             ) : isVoice ? (
                                                 <div className="flex items-center gap-2 min-w-[150px]">
                                                     <motion.div
@@ -625,20 +780,15 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                                 />
                                                             ))}
                                                         </div>
-                                                        <div className="flex items-center justify-between mt-1">
-                                                            <span className="text-[9px] opacity-70">
-                                                                {msg.voiceDuration ? `0:${String(msg.voiceDuration).padStart(2, '0')}` : '0:00'}
-                                                            </span>
-                                                            <span className="text-[9px] opacity-50">
-                                                                ⏱️ 2min
-                                                            </span>
-                                                        </div>
+                                                        <span className="text-[9px] opacity-70">
+                                                            {msg.voiceDuration ? `0:${String(msg.voiceDuration).padStart(2, '0')}` : '0:00'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <p className="text-sm leading-relaxed break-words">{msg.text}</p>
                                             )}
-                                            {!isSticker && !isVoice && (
+                                            {!isSticker && !isVoice && !isImage && (
                                                 <p className="text-[9px] opacity-60 text-right mt-0.5">
                                                     {formatTime(msg.timestamp)}
                                                 </p>
@@ -683,6 +833,15 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                             {emoji}
                                                         </motion.button>
                                                     ))}
+                                                    {/* Star button */}
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.3 }}
+                                                        whileTap={{ scale: 0.9 }}
+                                                        onClick={(e) => { e.stopPropagation(); toggleStar(msg.id); setActiveReactionMessage(null); }}
+                                                        className={`text-lg p-0.5 rounded-full transition-colors ${msg.starred ? 'bg-yellow-400 text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                                                    >
+                                                        ⭐
+                                                    </motion.button>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
@@ -759,6 +918,47 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                 </motion.button>
                             ))}
                         </div>
+
+                        {/* Custom Stickers Section */}
+                        <div className="px-3 pb-3 border-t border-[rgba(0,0,0,0.05)] pt-2">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-[var(--sub-color)]">Your Stickers</span>
+                                <label className="text-xs text-[var(--main-color)] cursor-pointer hover:underline">
+                                    + Add
+                                    <input
+                                        ref={stickerInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleStickerUpload}
+                                        className="hidden"
+                                    />
+                                </label>
+                            </div>
+                            <div className="flex gap-2 overflow-x-auto py-1">
+                                {customStickers.length === 0 ? (
+                                    <span className="text-xs text-[var(--sub-color)] opacity-50">Add photos as custom stickers</span>
+                                ) : (
+                                    customStickers.map((sticker, idx) => (
+                                        <div key={idx} className="relative group shrink-0">
+                                            <motion.img
+                                                src={sticker}
+                                                alt="Custom sticker"
+                                                whileHover={{ scale: 1.1 }}
+                                                whileTap={{ scale: 0.9 }}
+                                                onClick={() => sendSticker(sticker)}
+                                                className="w-12 h-12 rounded-lg object-cover cursor-pointer"
+                                            />
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); removeCustomSticker(idx); }}
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -807,8 +1007,43 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             </svg>
                         </motion.button>
                     </div>
+                ) : imagePreview ? (
+                    /* Image preview */
+                    <div className="flex items-center gap-3">
+                        <img src={imagePreview} alt="Preview" className="w-16 h-16 rounded-xl object-cover" />
+                        <div className="flex-1 text-sm text-[var(--sub-color)]">Ready to send</div>
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={cancelImagePreview}
+                            className="p-2 rounded-full bg-gray-200 text-gray-600"
+                        >
+                            ✕
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={sendImage}
+                            disabled={sendingImage}
+                            className="p-2.5 rounded-full bg-green-500 text-white"
+                        >
+                            {sendingImage ? "..." : "➤"}
+                        </motion.button>
+                    </div>
                 ) : (
                     <div className="flex items-center gap-2">
+                        {/* Image upload */}
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2.5 rounded-full transition-colors hover:bg-[rgba(0,0,0,0.05)]"
+                        >
+                            📷
+                        </motion.button>
                         <motion.button
                             type="button"
                             whileHover={{ scale: 1.1 }}
@@ -870,6 +1105,69 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     </div>
                 )}
             </form>
+
+            {/* Hidden file inputs */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+            />
+
+            {/* Starred Messages Panel */}
+            <AnimatePresence>
+                {showStarred && (
+                    <motion.div
+                        initial={{ opacity: 0, x: "100%" }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: "100%" }}
+                        transition={{ type: "spring", damping: 25 }}
+                        className="absolute inset-0 bg-[var(--bg-color)] z-30 flex flex-col"
+                    >
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[rgba(0,0,0,0.05)]">
+                            <span className="font-semibold text-[var(--text-color)]">⭐ Starred Messages</span>
+                            <button
+                                onClick={() => setShowStarred(false)}
+                                className="p-2 rounded-full hover:bg-[rgba(0,0,0,0.05)]"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            {starredMessages.length === 0 ? (
+                                <div className="text-center text-[var(--sub-color)] py-8">
+                                    <span className="text-4xl block mb-2">⭐</span>
+                                    <p className="text-sm">No starred messages yet</p>
+                                    <p className="text-xs opacity-60">Tap a message and click ⭐ to save it here</p>
+                                </div>
+                            ) : (
+                                starredMessages.map((msg) => (
+                                    <div
+                                        key={msg.id}
+                                        className="p-3 rounded-xl bg-[rgba(0,0,0,0.03)] border border-[rgba(0,0,0,0.05)]"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-xs">{msg.sender === "haidar" ? "⭐" : "👸"}</span>
+                                            <span className="text-xs text-[var(--sub-color)]">{formatTime(msg.timestamp)}</span>
+                                        </div>
+                                        {msg.text && <p className="text-sm text-[var(--text-color)]">{msg.text}</p>}
+                                        {msg.sticker && <span className="text-3xl">{typeof msg.sticker === 'string' && msg.sticker.startsWith('data:') ? <img src={msg.sticker} className="w-12 h-12 rounded" /> : msg.sticker}</span>}
+                                        {msg.image && <img src={msg.image} className="max-w-[150px] rounded-lg" />}
+                                        {msg.voiceMessage && <span className="text-sm">🎤 Voice message</span>}
+                                        <button
+                                            onClick={() => toggleStar(msg.id)}
+                                            className="text-xs text-red-400 mt-2 hover:underline"
+                                        >
+                                            Remove star
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Audio Call Modal */}
             <AudioCall
