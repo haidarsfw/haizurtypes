@@ -996,11 +996,6 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                 </div>
                                             )}
 
-                                            {/* Read receipt */}
-                                            {isMe && msg.readBy?.length > 1 && (
-                                                <span className="absolute -bottom-3 right-0 text-[9px] text-blue-400">✓✓</span>
-                                            )}
-
                                             {isSticker ? (
                                                 isCustomSticker ? (
                                                     <motion.img
@@ -1058,9 +1053,22 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                 <p className="text-sm leading-relaxed break-words">{msg.text}</p>
                                             )}
                                             {!isSticker && !isVoice && !isImage && (
-                                                <p className="text-[9px] opacity-60 text-right mt-0.5">
+                                                <p className="text-[9px] opacity-60 text-right mt-0.5 flex items-center justify-end gap-1">
                                                     {formatTime(msg.timestamp)}
+                                                    {isMe && (
+                                                        <span className={msg.readBy?.length > 1 ? "text-blue-400" : "opacity-50"}>
+                                                            {msg.readBy?.length > 1 ? "✓✓" : "✓"}
+                                                        </span>
+                                                    )}
                                                 </p>
+                                            )}
+                                            {/* Read receipt for stickers/images/voice */}
+                                            {(isSticker || isVoice || isImage) && isMe && (
+                                                <div className="text-right mt-1">
+                                                    <span className={`text-[10px] ${msg.readBy?.length > 1 ? "text-blue-400" : "text-gray-400"}`}>
+                                                        {msg.readBy?.length > 1 ? "✓✓" : "✓"}
+                                                    </span>
+                                                </div>
                                             )}
                                         </motion.div>
 
