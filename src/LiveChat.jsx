@@ -14,6 +14,7 @@ import {
     arrayUnion,
     arrayRemove
 } from "firebase/firestore";
+import AudioCall from "./AudioCall";
 
 // Chat theme presets
 const CHAT_THEMES = {
@@ -51,6 +52,7 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [activeReactionMessage, setActiveReactionMessage] = useState(null);
     const [error, setError] = useState(null);
+    const [isCallOpen, setIsCallOpen] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -323,7 +325,7 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     <div className="relative">
                         <span className="text-xl">{role === "haidar" ? "⭐" : "👸"}</span>
                         <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--bg-color)] ${connectionStatus === "connected" ? "bg-green-500" :
-                                connectionStatus === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
+                            connectionStatus === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
                             }`} />
                     </div>
                     <div>
@@ -336,6 +338,16 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
+                    {/* Call button */}
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setIsCallOpen(true)}
+                        className="p-2 rounded-full hover:bg-[rgba(0,0,0,0.05)] transition-colors text-green-500"
+                        title="Voice Call"
+                    >
+                        📞
+                    </motion.button>
                     <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
@@ -379,8 +391,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                     whileTap={{ scale: 0.95 }}
                                     onClick={() => { setChatTheme(key); setShowThemePicker(false); }}
                                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${chatTheme === key
-                                            ? "bg-[var(--main-color)] text-white shadow-md"
-                                            : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] hover:bg-[rgba(0,0,0,0.1)]"
+                                        ? "bg-[var(--main-color)] text-white shadow-md"
+                                        : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] hover:bg-[rgba(0,0,0,0.1)]"
                                         }`}
                                 >
                                     {t.emoji} {t.name}
@@ -549,8 +561,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                     key={key}
                                     onClick={() => setActiveStickerPack(key)}
                                     className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-all ${activeStickerPack === key
-                                            ? "bg-[var(--main-color)] text-white"
-                                            : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)]"
+                                        ? "bg-[var(--main-color)] text-white"
+                                        : "bg-[rgba(0,0,0,0.05)] text-[var(--text-color)]"
                                         }`}
                                 >
                                     {pack.emoji}
@@ -624,6 +636,13 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     </motion.button>
                 </div>
             </form>
+
+            {/* Audio Call Modal */}
+            <AudioCall
+                role={role}
+                isOpen={isCallOpen}
+                onClose={() => setIsCallOpen(false)}
+            />
         </div>
     );
 };
