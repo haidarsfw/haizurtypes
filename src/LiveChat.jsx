@@ -12,7 +12,10 @@ import {
     doc,
     updateDoc,
     arrayUnion,
-    arrayRemove
+    arrayRemove,
+    deleteDoc,
+    setDoc,
+    getDoc
 } from "firebase/firestore";
 import AudioCall from "./AudioCall";
 
@@ -60,6 +63,10 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const [customStickers, setCustomStickers] = useState([]);
     const [imagePreview, setImagePreview] = useState(null);
     const [sendingImage, setSendingImage] = useState(false);
+    const [otherTyping, setOtherTyping] = useState(false);
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [showSearch, setShowSearch] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -71,6 +78,7 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const audioPlayerRef = useRef(null);
     const fileInputRef = useRef(null);
     const stickerInputRef = useRef(null);
+    const typingTimeoutRef = useRef(null);
 
     // Play notification sound
     const playSound = useCallback(() => {
@@ -186,21 +194,100 @@ const LiveChat = ({ theme, isPopup = false }) => {
         }
     };
 
+    // Typing indicator - update presence
+    const updateTypingStatus = useCallback(async (isTyping) => {
+        if (!role) return;
+        try {
+            await setDoc(doc(firestore, "typing-status", role), {
+                isTyping,
+                updatedAt: Date.now()
+            }, { merge: true });
+        } catch (e) { /* ignore */ }
+    }, [role]);
+
+    // Listen for other person's typing
+    useEffect(() => {
+        if (!role) return;
+        const otherRole = role === "haidar" ? "princess" : "haidar";
+
+        const unsub = onSnapshot(doc(firestore, "typing-status", otherRole), (snap) => {
+            const data = snap.data();
+            if (data && data.isTyping && Date.now() - data.updatedAt < 5000) {
+                setOtherTyping(true);
+            } else {
+                setOtherTyping(false);
+            }
+        });
+
+        return () => unsub();
+    }, [role]);
+
+    // Handle input change with typing indicator
+    const handleInputChange = (e) => {
+        setNewMessage(e.target.value);
+
+        // Update typing status
+        updateTypingStatus(true);
+
+        // Clear previous timeout
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+        // Set typing to false after 2 seconds of no typing
+        typingTimeoutRef.current = setTimeout(() => {
+            updateTypingStatus(false);
+        }, 2000);
+    };
+
+    // Mark messages as read
+    const markMessagesAsRead = useCallback(async () => {
+        if (!role || !messages.length) return;
+
+        const unreadMessages = messages.filter(m =>
+            m.sender !== role && !m.readBy?.includes(role)
+        );
+
+        for (const msg of unreadMessages.slice(-5)) { // Mark last 5 unread
+            try {
+                await updateDoc(doc(firestore, "chat-messages", msg.id), {
+                    readBy: arrayUnion(role)
+                });
+            } catch (e) { /* ignore */ }
+        }
+    }, [role, messages]);
+
+    // Mark as read when viewing
+    useEffect(() => {
+        if (isTabFocusedRef.current && messages.length > 0) {
+            markMessagesAsRead();
+        }
+    }, [messages, markMessagesAsRead]);
+
     const sendMessage = async (e) => {
         e?.preventDefault();
         const text = newMessage.trim();
         if (!text || !role) return;
 
+        const reply = replyingTo;
         setNewMessage("");
         setShowEmojiPicker(false);
         setShowStickerPicker(false);
+        setReplyingTo(null);
+        updateTypingStatus(false);
 
         try {
             await addDoc(collection(firestore, "chat-messages"), {
                 text,
                 sender: role,
                 timestamp: serverTimestamp(),
-                reactions: []
+                reactions: [],
+                readBy: [role],
+                ...(reply && {
+                    replyTo: {
+                        id: reply.id,
+                        text: reply.text?.substring(0, 50) || (reply.sticker ? "Sticker" : reply.image ? "Image" : "Voice"),
+                        sender: reply.sender
+                    }
+                })
             });
         } catch (err) {
             console.error("Send error:", err);
@@ -208,6 +295,32 @@ const LiveChat = ({ theme, isPopup = false }) => {
             setError("Failed to send. Try again.");
         }
     };
+
+    // Delete message
+    const deleteMessage = async (messageId, forEveryone = false) => {
+        if (!messageId) return;
+        try {
+            if (forEveryone) {
+                await deleteDoc(doc(firestore, "chat-messages", messageId));
+            } else {
+                // Just hide for self (mark as deleted)
+                await updateDoc(doc(firestore, "chat-messages", messageId), {
+                    deletedFor: arrayUnion(role)
+                });
+            }
+            setActiveReactionMessage(null);
+        } catch (err) {
+            console.error("Delete error:", err);
+            setError("Failed to delete");
+        }
+    };
+
+    // Search messages
+    const filteredMessages = searchQuery.trim()
+        ? messages.filter(m =>
+            m.text?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : messages;
 
     const sendSticker = async (sticker) => {
         if (!role) return;
@@ -498,7 +611,12 @@ const LiveChat = ({ theme, isPopup = false }) => {
         return d.toLocaleDateString([], { month: "short", day: "numeric" });
     };
 
-    const groupedMessages = messages.reduce((acc, msg) => {
+    // Filter deleted messages and group
+    const visibleMessages = filteredMessages.filter(m =>
+        !m.deletedFor?.includes(role)
+    );
+
+    const groupedMessages = visibleMessages.reduce((acc, msg) => {
         const key = msg.timestamp ? formatDate(msg.timestamp) : "Now";
         if (!acc[key]) acc[key] = [];
         acc[key].push(msg);
@@ -610,6 +728,16 @@ const LiveChat = ({ theme, isPopup = false }) => {
                     >
                         ⭐
                     </motion.button>
+                    {/* Search button */}
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setShowSearch(!showSearch)}
+                        className={`p-2 rounded-full transition-colors ${showSearch ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                        title="Search"
+                    >
+                        🔍
+                    </motion.button>
                     <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
@@ -660,6 +788,64 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                     {t.emoji} {t.name}
                                 </motion.button>
                             ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Search bar */}
+            <AnimatePresence>
+                {showSearch && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-[var(--bg-color)] border-b border-[rgba(0,0,0,0.05)]"
+                    >
+                        <div className="flex items-center gap-2 p-3">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search messages..."
+                                className="flex-1 px-3 py-2 rounded-xl bg-[rgba(0,0,0,0.05)] text-sm outline-none"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery("")} className="text-xs text-[var(--sub-color)]">
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                        {searchQuery && (
+                            <p className="text-xs text-[var(--sub-color)] px-3 pb-2">
+                                {filteredMessages.length} results
+                            </p>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Typing indicator */}
+            <AnimatePresence>
+                {otherTyping && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="px-4 py-2 bg-[var(--bg-color)]"
+                    >
+                        <div className="flex items-center gap-2 text-xs text-[var(--sub-color)]">
+                            <span>{role === "haidar" ? "👸 Princess" : "⭐ Haidar"} is typing</span>
+                            <motion.div className="flex gap-0.5">
+                                {[0, 1, 2].map(i => (
+                                    <motion.span
+                                        key={i}
+                                        animate={{ opacity: [0.3, 1, 0.3] }}
+                                        transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }}
+                                        className="w-1.5 h-1.5 bg-[var(--sub-color)] rounded-full"
+                                    />
+                                ))}
+                            </motion.div>
                         </div>
                     </motion.div>
                 )}
@@ -741,6 +927,19 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                             {/* Starred indicator */}
                                             {msg.starred && (
                                                 <span className="absolute -top-1 -right-1 text-xs">⭐</span>
+                                            )}
+
+                                            {/* Reply preview */}
+                                            {msg.replyTo && (
+                                                <div className="mb-1 px-2 py-1 rounded bg-white/10 border-l-2 border-white/30 text-[11px] opacity-80">
+                                                    <span className="font-medium">{msg.replyTo.sender === "haidar" ? "Haidar" : "Princess"}: </span>
+                                                    {msg.replyTo.text}
+                                                </div>
+                                            )}
+
+                                            {/* Read receipt */}
+                                            {isMe && msg.readBy?.length > 1 && (
+                                                <span className="absolute -bottom-3 right-0 text-[9px] text-blue-400">✓✓</span>
                                             )}
 
                                             {isSticker ? (
@@ -841,6 +1040,24 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                         className={`text-lg p-0.5 rounded-full transition-colors ${msg.starred ? 'bg-yellow-400 text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
                                                     >
                                                         ⭐
+                                                    </motion.button>
+                                                    {/* Reply button */}
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.3 }}
+                                                        whileTap={{ scale: 0.9 }}
+                                                        onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveReactionMessage(null); inputRef.current?.focus(); }}
+                                                        className="text-lg p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
+                                                    >
+                                                        ↩️
+                                                    </motion.button>
+                                                    {/* Delete button */}
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.3 }}
+                                                        whileTap={{ scale: 0.9 }}
+                                                        onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id, isMe); }}
+                                                        className="text-lg p-0.5 hover:bg-red-100 text-red-500 rounded-full transition-colors"
+                                                    >
+                                                        🗑️
                                                     </motion.button>
                                                 </motion.div>
                                             )}
@@ -965,6 +1182,32 @@ const LiveChat = ({ theme, isPopup = false }) => {
 
             {/* Input area */}
             <form onSubmit={sendMessage} className="p-3 bg-[var(--bg-color)] border-t border-[rgba(0,0,0,0.05)]">
+                {/* Reply preview */}
+                {replyingTo && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        className="flex items-center gap-2 mb-2 px-3 py-2 rounded-xl bg-[rgba(0,0,0,0.05)] border-l-3 border-[var(--main-color)]"
+                    >
+                        <div className="flex-1 text-xs">
+                            <span className="text-[var(--sub-color)]">Replying to </span>
+                            <span className="font-medium text-[var(--text-color)]">
+                                {replyingTo.sender === "haidar" ? "Haidar" : "Princess"}
+                            </span>
+                            <p className="text-[var(--text-color)] opacity-70 truncate mt-0.5">
+                                {replyingTo.text || (replyingTo.sticker ? "Sticker" : replyingTo.image ? "Image" : "Voice message")}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setReplyingTo(null)}
+                            className="text-[var(--sub-color)] hover:text-[var(--text-color)] p-1"
+                        >
+                            ✕
+                        </button>
+                    </motion.div>
+                )}
+
                 {/* Recording UI */}
                 {isRecording ? (
                     <div className="flex items-center gap-3">
@@ -1066,8 +1309,8 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             ref={inputRef}
                             type="text"
                             value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder="Message..."
+                            onChange={handleInputChange}
+                            placeholder={replyingTo ? "Reply..." : "Message..."}
                             autoComplete="off"
                             className="flex-1 px-4 py-2.5 rounded-2xl bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] focus:ring-opacity-50 transition-all text-sm"
                             style={{ fontSize: '16px' }}
