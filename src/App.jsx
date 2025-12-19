@@ -17,6 +17,7 @@ import BossMode from "./BossMode";
 import LoveLetters from "./LoveLetters";
 import FloatingParticles from "./FloatingParticles";
 import LiveCursor from "./LiveCursor";
+import LiveChat from "./LiveChat";
 
 // Mobile detection hook - checks user agent for actual mobile devices
 const useIsMobile = () => {
@@ -348,6 +349,7 @@ export default function App() {
                 <button onClick={() => switchGameGlobal('boss')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition ${activeGame === 'boss' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--text-color)]'}`}>👹 Boss Mode</button>
                 <button onClick={() => switchGameGlobal('finish')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition ${activeGame === 'finish' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--text-color)]'}`}>🧠 Finish Sentence</button>
                 <button onClick={() => switchGameGlobal('letters')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition border border-[var(--main-color)] ${activeGame === 'letters' ? 'bg-[var(--main-color)] text-[var(--bg-color)]' : 'text-[var(--main-color)]'}`}>💌 Unlockable Letters</button>
+                <button onClick={() => switchGameGlobal('chat')} className={`p-4 text-left rounded hover:bg-[var(--sub-color)] hover:text-[var(--bg-color)] transition border-2 border-pink-400 ${activeGame === 'chat' ? 'bg-pink-500 text-white' : 'text-pink-400'}`}>💬 Live Chat</button>
               </div>
               <div className="text-[var(--sub-color)] text-xs font-bold uppercase mb-4 tracking-widest">Global Theme</div>
               <div className="flex gap-2 mb-8">
@@ -379,6 +381,7 @@ export default function App() {
         {activeGame === 'sky' && <NightSky otherUsers={otherUsers} />}
         {activeGame === 'boss' && <BossMode otherUsers={otherUsers} session={session} updateSession={updateSession} />}
         {activeGame === 'letters' && <LoveLetters otherUsers={otherUsers} />}
+        {activeGame === 'chat' && <LiveChat theme={theme} />}
       </div>
 
       <div className="w-full max-w-6xl flex flex-col items-center gap-2 text-[var(--sub-color)] text-sm opacity-50 mb-6">

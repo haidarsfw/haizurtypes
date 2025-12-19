@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getFirestore } from "firebase/firestore";
 
 // 👇 PASTE YOUR CONFIG FROM GOOGLE HERE AGAIN
 const firebaseConfig = {
@@ -15,5 +16,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// ⚠️ THIS LINE WAS THE PROBLEM. IT MUST SAY "export"
+// Realtime Database for multiplayer presence
 export const db = getDatabase(app);
+
+// Firestore for persistent chat messages
+export const firestore = getFirestore(app);
