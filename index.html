@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- iOS Safari specific -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>haizur type's</title>
+    <style>
+      /* Fallback loading state */
+      #root:empty::after {
+        content: 'Loading...';
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: #e2b714;
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.5rem;
+        background: #323437;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <noscript>
+      <div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#323437;color:#e2b714;font-family:monospace;font-size:1.5rem;">
+        Please enable JavaScript to use this app.
+      </div>
+    </noscript>
+  </body>
+</html>

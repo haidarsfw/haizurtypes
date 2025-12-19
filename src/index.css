@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default (Serika Dark) */
+  --bg-color: #323437;
+  --main-color: #e2b714;
+  --caret-color: #e2b714;
+  --sub-color: #646669;
+  --text-color: #d1d0c5;
+  --error-color: #ca4754;
+}
+
+[data-theme='matrix'] {
+  --bg-color: #000000;
+  --main-color: #00ff00;
+  --caret-color: #00ff00;
+  --sub-color: #003b00;
+  --text-color: #008f11;
+  --error-color: #da3333;
+}
+
+/* LOVE THEME: Dark Pink Mode */
+[data-theme='love'] {
+  --bg-color: #231e20;       /* Dark Chocolate/Black base */
+  --main-color: #ff69b4;     /* Hot Pink for active stuff */
+  --caret-color: #ff69b4;
+  --sub-color: #946579;      /* Muted Mauve for ignored text */
+  --text-color: #ffe6f2;     /* Pale Sakura White for text */
+  --error-color: #ff0033;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Roboto Mono', monospace;
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.word-break-fix {
+  word-break: keep-all; 
+  overflow-wrap: normal;
+}
+
+/* ============================================ */
+/* MOBILE RESPONSIVE STYLES                     */
+/* ============================================ */
+
+/* Allow scrolling on mobile */
+@media (max-width: 768px) {
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Mobile keyboard container */
+.mobile-keyboard {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-keyboard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 100vw;
+  }
+  
+  .keyboard-row {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+  }
+  
+  .keyboard-key {
+    min-width: 28px;
+    height: 42px;
+    border-radius: 6px;
+    background: var(--sub-color);
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: bold;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .keyboard-key:active {
+    background: var(--main-color);
+    transform: scale(0.95);
+  }
+  
+  .keyboard-key.space {
+    flex: 1;
+    max-width: 200px;
+    min-width: 120px;
+  }
+  
+  .keyboard-key.backspace {
+    min-width: 50px;
+  }
+}
+
+/* Hide on mobile only */
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+/* Show on mobile only */
+.show-on-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .show-on-mobile {
+    display: flex;
+  }
+}
+
+/* Mobile text sizes */
+@media (max-width: 768px) {
+  .mobile-text-sm {
+    font-size: 14px !important;
+  }
+  
+  .mobile-text-base {
+    font-size: 16px !important;
+  }
+  
+  .mobile-text-lg {
+    font-size: 18px !important;
+  }
+  
+  .mobile-text-xl {
+    font-size: 20px !important;
+  }
+  
+  .mobile-text-2xl {
+    font-size: 24px !important;
+  }
+}
+
+/* Mobile spacing */
+@media (max-width: 768px) {
+  .mobile-px-2 {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  
+  .mobile-py-2 {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+  
+  .mobile-gap-2 {
+    gap: 8px !important;
+  }
+}
+
+/* Mobile safe area for notch phones */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* No scrollbar for entire html on mobile */
+@media (max-width: 768px) {
+  html {
+    overflow-x: hidden;
+  }
+}
