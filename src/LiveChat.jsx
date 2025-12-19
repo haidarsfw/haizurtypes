@@ -16,8 +16,67 @@ const LiveChat = ({ theme }) => {
     const [newMessage, setNewMessage] = useState("");
     const [role, setRole] = useState(null); // 'haidar' or 'princess'
     const [isLoading, setIsLoading] = useState(true);
+    const [notificationPermission, setNotificationPermission] = useState("default");
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const lastMessageCountRef = useRef(0);
+    const isTabFocusedRef = useRef(true);
+
+    // Track tab focus for notifications
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            isTabFocusedRef.current = !document.hidden;
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, []);
+
+    // Check notification permission on mount
+    useEffect(() => {
+        if ("Notification" in window) {
+            setNotificationPermission(Notification.permission);
+        }
+    }, []);
+
+    // Request notification permission
+    const requestNotificationPermission = async () => {
+        if (!("Notification" in window)) {
+            console.log("This browser does not support notifications");
+            return;
+        }
+
+        try {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+        } catch (error) {
+            console.error("Error requesting notification permission:", error);
+        }
+    };
+
+    // Show notification for new message
+    const showNotification = (senderName, messageText) => {
+        if (notificationPermission !== "granted") return;
+        if (isTabFocusedRef.current) return; // Don't notify if tab is focused
+
+        try {
+            const notification = new Notification(`💬 ${senderName}`, {
+                body: messageText.substring(0, 100),
+                icon: "https://em-content.zobj.net/source/apple/391/sparkling-heart_1f496.png",
+                tag: "haizur-chat",
+                requireInteraction: false
+            });
+
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+
+            // Auto-close after 5 seconds
+            setTimeout(() => notification.close(), 5000);
+        } catch (error) {
+            console.error("Error showing notification:", error);
+        }
+    };
 
     // Load saved role from localStorage
     useEffect(() => {
@@ -43,11 +102,22 @@ const LiveChat = ({ theme }) => {
                 id: doc.id,
                 ...doc.data()
             }));
+
+            // Check for new messages from partner
+            if (msgs.length > lastMessageCountRef.current && lastMessageCountRef.current > 0) {
+                const latestMessage = msgs[msgs.length - 1];
+                if (latestMessage && latestMessage.sender !== role) {
+                    const senderName = latestMessage.sender === "princess" ? "Princess 👸" : "Haidar ⭐";
+                    showNotification(senderName, latestMessage.text);
+                }
+            }
+            lastMessageCountRef.current = msgs.length;
+
             setMessages(msgs);
         });
 
         return () => unsubscribe();
-    }, [role]);
+    }, [role, notificationPermission]);
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -61,9 +131,12 @@ const LiveChat = ({ theme }) => {
         }
     }, [role]);
 
-    const selectRole = (selectedRole) => {
+    const selectRole = async (selectedRole) => {
         setRole(selectedRole);
         localStorage.setItem("haizur-chat-role", selectedRole);
+
+        // Request notification permission after role selection
+        await requestNotificationPermission();
     };
 
     const sendMessage = async (e) => {
@@ -218,8 +291,8 @@ const LiveChat = ({ theme }) => {
                                 >
                                     <div
                                         className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMe
-                                                ? "rounded-br-md"
-                                                : "rounded-bl-md"
+                                            ? "rounded-br-md"
+                                            : "rounded-bl-md"
                                             }`}
                                         style={{
                                             backgroundColor: isMe
