@@ -202,14 +202,17 @@ const LiveChat = ({ theme, isPopup = false }) => {
                 isTyping,
                 updatedAt: Date.now()
             }, { merge: true });
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.log("Typing status update failed - check Firebase rules for typing-status collection");
+        }
     }, [role]);
 
-    // Listen for other person's typing
+    // Listen for other person's typing with periodic check
     useEffect(() => {
         if (!role) return;
         const otherRole = role === "haidar" ? "princess" : "haidar";
 
+        // Real-time listener
         const unsub = onSnapshot(doc(firestore, "typing-status", otherRole), (snap) => {
             const data = snap.data();
             if (data && data.isTyping && Date.now() - data.updatedAt < 5000) {
@@ -217,9 +220,22 @@ const LiveChat = ({ theme, isPopup = false }) => {
             } else {
                 setOtherTyping(false);
             }
+        }, (error) => {
+            console.log("Typing status listener failed - check Firebase rules");
         });
 
-        return () => unsub();
+        // Periodic check to clear stale typing status
+        const interval = setInterval(() => {
+            setOtherTyping(prev => {
+                // This will trigger re-evaluation on next snapshot
+                return prev;
+            });
+        }, 3000);
+
+        return () => {
+            unsub();
+            clearInterval(interval);
+        };
     }, [role]);
 
     // Handle input change with typing indicator
@@ -238,6 +254,11 @@ const LiveChat = ({ theme, isPopup = false }) => {
         }, 2000);
     };
 
+    // Clear typing when input loses focus
+    const handleInputBlur = () => {
+        updateTypingStatus(false);
+    };
+
     // Mark messages as read
     const markMessagesAsRead = useCallback(async () => {
         if (!role || !messages.length) return;
@@ -246,21 +267,27 @@ const LiveChat = ({ theme, isPopup = false }) => {
             m.sender !== role && !m.readBy?.includes(role)
         );
 
-        for (const msg of unreadMessages.slice(-5)) { // Mark last 5 unread
+        for (const msg of unreadMessages.slice(-10)) { // Mark last 10 unread
             try {
                 await updateDoc(doc(firestore, "chat-messages", msg.id), {
                     readBy: arrayUnion(role)
                 });
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                console.log("Read receipt update failed:", e);
+            }
         }
     }, [role, messages]);
 
-    // Mark as read when viewing
+    // Mark as read when viewing - always call when messages change
     useEffect(() => {
-        if (isTabFocusedRef.current && messages.length > 0) {
-            markMessagesAsRead();
+        if (messages.length > 0 && role) {
+            // Small delay to avoid rapid updates
+            const timeout = setTimeout(() => {
+                markMessagesAsRead();
+            }, 500);
+            return () => clearTimeout(timeout);
         }
-    }, [messages, markMessagesAsRead]);
+    }, [messages, markMessagesAsRead, role]);
 
     const sendMessage = async (e) => {
         e?.preventDefault();
@@ -1019,46 +1046,49 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                     exit={{ opacity: 0, y: 5, scale: 0.9 }}
                                                     transition={{ duration: 0.15 }}
-                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-9 bg-[var(--bg-color)] shadow-lg rounded-full px-1.5 py-1 flex gap-0.5 z-20 border border-[rgba(0,0,0,0.05)]`}
+                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-16 bg-[var(--bg-color)] shadow-lg rounded-xl p-2 z-20 border border-[rgba(0,0,0,0.1)]`}
                                                 >
-                                                    {QUICK_REACTIONS.map((emoji) => (
+                                                    {/* Reactions row */}
+                                                    <div className="flex gap-0.5 pb-1.5 border-b border-[rgba(0,0,0,0.05)]">
+                                                        {QUICK_REACTIONS.map((emoji) => (
+                                                            <motion.button
+                                                                key={emoji}
+                                                                whileHover={{ scale: 1.3 }}
+                                                                whileTap={{ scale: 0.9 }}
+                                                                onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
+                                                                className="text-lg p-1 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
+                                                            >
+                                                                {emoji}
+                                                            </motion.button>
+                                                        ))}
+                                                    </div>
+                                                    {/* Actions row */}
+                                                    <div className="flex gap-1 pt-1.5">
                                                         <motion.button
-                                                            key={emoji}
-                                                            whileHover={{ scale: 1.3 }}
+                                                            whileHover={{ scale: 1.1 }}
                                                             whileTap={{ scale: 0.9 }}
-                                                            onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
-                                                            className="text-lg p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
+                                                            onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveReactionMessage(null); inputRef.current?.focus(); }}
+                                                            className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 hover:bg-[rgba(0,0,0,0.05)] rounded-lg transition-colors text-[var(--text-color)]"
                                                         >
-                                                            {emoji}
+                                                            ↩️ Reply
                                                         </motion.button>
-                                                    ))}
-                                                    {/* Star button */}
-                                                    <motion.button
-                                                        whileHover={{ scale: 1.3 }}
-                                                        whileTap={{ scale: 0.9 }}
-                                                        onClick={(e) => { e.stopPropagation(); toggleStar(msg.id); setActiveReactionMessage(null); }}
-                                                        className={`text-lg p-0.5 rounded-full transition-colors ${msg.starred ? 'bg-yellow-400 text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
-                                                    >
-                                                        ⭐
-                                                    </motion.button>
-                                                    {/* Reply button */}
-                                                    <motion.button
-                                                        whileHover={{ scale: 1.3 }}
-                                                        whileTap={{ scale: 0.9 }}
-                                                        onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveReactionMessage(null); inputRef.current?.focus(); }}
-                                                        className="text-lg p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
-                                                    >
-                                                        ↩️
-                                                    </motion.button>
-                                                    {/* Delete button */}
-                                                    <motion.button
-                                                        whileHover={{ scale: 1.3 }}
-                                                        whileTap={{ scale: 0.9 }}
-                                                        onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id, isMe); }}
-                                                        className="text-lg p-0.5 hover:bg-red-100 text-red-500 rounded-full transition-colors"
-                                                    >
-                                                        🗑️
-                                                    </motion.button>
+                                                        <motion.button
+                                                            whileHover={{ scale: 1.1 }}
+                                                            whileTap={{ scale: 0.9 }}
+                                                            onClick={(e) => { e.stopPropagation(); toggleStar(msg.id); setActiveReactionMessage(null); }}
+                                                            className={`flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 rounded-lg transition-colors ${msg.starred ? 'bg-yellow-100 text-yellow-600' : 'hover:bg-[rgba(0,0,0,0.05)] text-[var(--text-color)]'}`}
+                                                        >
+                                                            ⭐ {msg.starred ? 'Unstar' : 'Star'}
+                                                        </motion.button>
+                                                        <motion.button
+                                                            whileHover={{ scale: 1.1 }}
+                                                            whileTap={{ scale: 0.9 }}
+                                                            onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id, isMe); }}
+                                                            className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors"
+                                                        >
+                                                            🗑️ Delete
+                                                        </motion.button>
+                                                    </div>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
@@ -1310,6 +1340,7 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             type="text"
                             value={newMessage}
                             onChange={handleInputChange}
+                            onBlur={handleInputBlur}
                             placeholder={replyingTo ? "Reply..." : "Message..."}
                             autoComplete="off"
                             className="flex-1 px-4 py-2.5 rounded-2xl bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] focus:ring-opacity-50 transition-all text-sm"
