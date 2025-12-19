@@ -328,7 +328,14 @@ const LiveChat = ({ theme, isPopup = false }) => {
         if (!messageId) return;
         try {
             if (forEveryone) {
-                await deleteDoc(doc(firestore, "chat-messages", messageId));
+                // Mark as deleted for everyone (show indicator)
+                await updateDoc(doc(firestore, "chat-messages", messageId), {
+                    deletedForEveryone: true,
+                    text: null,
+                    sticker: null,
+                    image: null,
+                    voiceMessage: null
+                });
             } else {
                 // Just hide for self (mark as deleted)
                 await updateDoc(doc(firestore, "chat-messages", messageId), {
@@ -889,8 +896,11 @@ const LiveChat = ({ theme, isPopup = false }) => {
                 </motion.div>
             )}
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            {/* Messages - click outside to close popup */}
+            <div
+                className="flex-1 overflow-y-auto p-4 space-y-1"
+                onClick={() => setActiveReactionMessage(null)}
+            >
                 {Object.entries(groupedMessages).map(([date, msgs]) => (
                     <div key={date}>
                         <div className="flex justify-center my-4">
@@ -904,9 +914,11 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             const bubbleColor = isMe ? currentTheme.myBubble : currentTheme.theirBubble;
                             const reactions = msg.reactions || [];
                             const isSticker = !!msg.sticker;
+                            const isCustomSticker = isSticker && typeof msg.sticker === 'string' && msg.sticker.startsWith('data:');
                             const isVoice = !!msg.voiceMessage;
                             const isImage = !!msg.image;
                             const voiceExpired = isVoice && isVoiceExpired(msg);
+                            const isDeleted = msg.deletedForEveryone;
 
                             // Don't render expired voice messages (or show as expired)
                             if (voiceExpired) {
@@ -922,6 +934,25 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                             style={{ backgroundColor: 'rgba(0,0,0,0.1)', color: 'var(--sub-color)' }}
                                         >
                                             🎤 Voice message expired 💨
+                                        </div>
+                                    </motion.div>
+                                );
+                            }
+
+                            // Show deleted indicator
+                            if (isDeleted) {
+                                return (
+                                    <motion.div
+                                        key={msg.id || idx}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 0.6 }}
+                                        className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2`}
+                                    >
+                                        <div
+                                            className={`px-3 py-2 rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"} text-xs italic border border-dashed border-[var(--sub-color)]`}
+                                            style={{ backgroundColor: 'transparent', color: 'var(--sub-color)' }}
+                                        >
+                                            🚫 This message was deleted
                                         </div>
                                     </motion.div>
                                 );
@@ -970,14 +1001,25 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                             )}
 
                                             {isSticker ? (
-                                                <motion.span
-                                                    className="text-6xl block"
-                                                    initial={{ scale: 0 }}
-                                                    animate={{ scale: 1 }}
-                                                    transition={{ type: "spring", stiffness: 400 }}
-                                                >
-                                                    {msg.sticker}
-                                                </motion.span>
+                                                isCustomSticker ? (
+                                                    <motion.img
+                                                        src={msg.sticker}
+                                                        alt="Custom sticker"
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        transition={{ type: "spring", stiffness: 400 }}
+                                                        className="w-20 h-20 object-cover rounded-lg"
+                                                    />
+                                                ) : (
+                                                    <motion.span
+                                                        className="text-6xl block"
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        transition={{ type: "spring", stiffness: 400 }}
+                                                    >
+                                                        {msg.sticker}
+                                                    </motion.span>
+                                                )
                                             ) : isImage ? (
                                                 <motion.img
                                                     src={msg.image}
@@ -1046,47 +1088,50 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                                     exit={{ opacity: 0, y: 5, scale: 0.9 }}
                                                     transition={{ duration: 0.15 }}
-                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-16 bg-[var(--bg-color)] shadow-lg rounded-xl p-2 z-20 border border-[rgba(0,0,0,0.1)]`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className={`absolute ${isMe ? "right-0" : "left-0"} -top-12 bg-[var(--bg-color)] shadow-lg rounded-xl px-1.5 py-1 z-20 border border-[rgba(0,0,0,0.1)]`}
                                                 >
                                                     {/* Reactions row */}
-                                                    <div className="flex gap-0.5 pb-1.5 border-b border-[rgba(0,0,0,0.05)]">
+                                                    <div className="flex gap-0.5">
                                                         {QUICK_REACTIONS.map((emoji) => (
                                                             <motion.button
                                                                 key={emoji}
-                                                                whileHover={{ scale: 1.3 }}
+                                                                whileHover={{ scale: 1.2 }}
                                                                 whileTap={{ scale: 0.9 }}
                                                                 onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
-                                                                className="text-lg p-1 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
+                                                                className="text-base p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
                                                             >
                                                                 {emoji}
                                                             </motion.button>
                                                         ))}
-                                                    </div>
-                                                    {/* Actions row */}
-                                                    <div className="flex gap-1 pt-1.5">
+                                                        <div className="w-px bg-[rgba(0,0,0,0.1)] mx-0.5" />
+                                                        {/* Actions - icons only */}
                                                         <motion.button
-                                                            whileHover={{ scale: 1.1 }}
+                                                            whileHover={{ scale: 1.2 }}
                                                             whileTap={{ scale: 0.9 }}
                                                             onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveReactionMessage(null); inputRef.current?.focus(); }}
-                                                            className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 hover:bg-[rgba(0,0,0,0.05)] rounded-lg transition-colors text-[var(--text-color)]"
+                                                            className="text-base p-0.5 hover:bg-[rgba(0,0,0,0.05)] rounded-full transition-colors"
+                                                            title="Reply"
                                                         >
-                                                            ↩️ Reply
+                                                            ↩️
                                                         </motion.button>
                                                         <motion.button
-                                                            whileHover={{ scale: 1.1 }}
+                                                            whileHover={{ scale: 1.2 }}
                                                             whileTap={{ scale: 0.9 }}
                                                             onClick={(e) => { e.stopPropagation(); toggleStar(msg.id); setActiveReactionMessage(null); }}
-                                                            className={`flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 rounded-lg transition-colors ${msg.starred ? 'bg-yellow-100 text-yellow-600' : 'hover:bg-[rgba(0,0,0,0.05)] text-[var(--text-color)]'}`}
+                                                            className={`text-base p-0.5 rounded-full transition-colors ${msg.starred ? 'bg-yellow-200' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                                                            title={msg.starred ? "Unstar" : "Star"}
                                                         >
-                                                            ⭐ {msg.starred ? 'Unstar' : 'Star'}
+                                                            ⭐
                                                         </motion.button>
                                                         <motion.button
-                                                            whileHover={{ scale: 1.1 }}
+                                                            whileHover={{ scale: 1.2 }}
                                                             whileTap={{ scale: 0.9 }}
                                                             onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id, isMe); }}
-                                                            className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 px-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors"
+                                                            className="text-base p-0.5 hover:bg-red-100 rounded-full transition-colors"
+                                                            title="Delete"
                                                         >
-                                                            🗑️ Delete
+                                                            🗑️
                                                         </motion.button>
                                                     </div>
                                                 </motion.div>
