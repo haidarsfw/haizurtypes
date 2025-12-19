@@ -53,11 +53,18 @@ const LiveChat = ({ theme, isPopup = false }) => {
     const [activeReactionMessage, setActiveReactionMessage] = useState(null);
     const [error, setError] = useState(null);
     const [isCallOpen, setIsCallOpen] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [playingVoiceId, setPlayingVoiceId] = useState(null);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const lastMessageCountRef = useRef(0);
     const isTabFocusedRef = useRef(true);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const recordingTimerRef = useRef(null);
+    const audioPlayerRef = useRef(null);
 
     // Play notification sound
     const playSound = useCallback(() => {
@@ -209,6 +216,120 @@ const LiveChat = ({ theme, isPopup = false }) => {
         } catch (err) {
             console.error("Send sticker error:", err);
         }
+    };
+
+    // Voice message recording
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                stream.getTracks().forEach(track => track.stop());
+
+                // Convert to base64
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64Audio = reader.result;
+                    try {
+                        await addDoc(collection(firestore, "chat-messages"), {
+                            voiceMessage: base64Audio,
+                            voiceDuration: recordingTime,
+                            sender: role,
+                            timestamp: serverTimestamp(),
+                            expiresAt: Date.now() + (2 * 60 * 1000), // 2 minutes from now
+                            reactions: []
+                        });
+                    } catch (err) {
+                        console.error("Voice send error:", err);
+                        setError("Failed to send voice message");
+                    }
+                };
+                reader.readAsDataURL(audioBlob);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingTime(0);
+
+            // Start timer
+            recordingTimerRef.current = setInterval(() => {
+                setRecordingTime(prev => {
+                    if (prev >= 60) { // Max 60 seconds
+                        stopRecording();
+                        return prev;
+                    }
+                    return prev + 1;
+                });
+            }, 1000);
+        } catch (err) {
+            console.error("Recording error:", err);
+            setError("Microphone access denied");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (recordingTimerRef.current) {
+                clearInterval(recordingTimerRef.current);
+                recordingTimerRef.current = null;
+            }
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current) {
+            mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
+            mediaRecorderRef.current = null;
+        }
+        audioChunksRef.current = [];
+        setIsRecording(false);
+        setRecordingTime(0);
+        if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+        }
+    };
+
+    const playVoiceMessage = (messageId, audioData) => {
+        if (playingVoiceId === messageId) {
+            audioPlayerRef.current?.pause();
+            setPlayingVoiceId(null);
+            return;
+        }
+
+        if (audioPlayerRef.current) {
+            audioPlayerRef.current.pause();
+        }
+
+        const audio = new Audio(audioData);
+        audioPlayerRef.current = audio;
+        audio.onended = () => setPlayingVoiceId(null);
+        audio.play();
+        setPlayingVoiceId(messageId);
+    };
+
+    // Check if voice message expired (2 min)
+    const isVoiceExpired = (msg) => {
+        if (!msg.expiresAt) return false;
+        return Date.now() > msg.expiresAt;
+    };
+
+    const formatRecordingTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     const toggleReaction = async (messageId, emoji) => {
@@ -429,6 +550,27 @@ const LiveChat = ({ theme, isPopup = false }) => {
                             const bubbleColor = isMe ? currentTheme.myBubble : currentTheme.theirBubble;
                             const reactions = msg.reactions || [];
                             const isSticker = !!msg.sticker;
+                            const isVoice = !!msg.voiceMessage;
+                            const voiceExpired = isVoice && isVoiceExpired(msg);
+
+                            // Don't render expired voice messages (or show as expired)
+                            if (voiceExpired) {
+                                return (
+                                    <motion.div
+                                        key={msg.id || idx}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 0.5 }}
+                                        className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2`}
+                                    >
+                                        <div
+                                            className={`px-3 py-2 rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"} text-xs italic`}
+                                            style={{ backgroundColor: 'rgba(0,0,0,0.1)', color: 'var(--sub-color)' }}
+                                        >
+                                            🎤 Voice message expired 💨
+                                        </div>
+                                    </motion.div>
+                                );
+                            }
 
                             return (
                                 <motion.div
@@ -441,9 +583,14 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                     <div className="relative max-w-[80%]">
                                         <motion.div
                                             whileTap={{ scale: 0.98 }}
-                                            onClick={() => setActiveReactionMessage(activeReactionMessage === msg.id ? null : msg.id)}
-                                            className={`cursor-pointer ${isSticker ? 'p-2' : 'px-3.5 py-2'} rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"
-                                                }`}
+                                            onClick={() => {
+                                                if (isVoice) {
+                                                    playVoiceMessage(msg.id, msg.voiceMessage);
+                                                } else {
+                                                    setActiveReactionMessage(activeReactionMessage === msg.id ? null : msg.id);
+                                                }
+                                            }}
+                                            className={`cursor-pointer ${isSticker ? 'p-2' : 'px-3.5 py-2'} rounded-2xl ${isMe ? "rounded-br-md" : "rounded-bl-md"}`}
                                             style={{
                                                 backgroundColor: isSticker ? 'transparent' : bubbleColor,
                                                 color: isSticker ? 'inherit' : '#fff'
@@ -458,10 +605,40 @@ const LiveChat = ({ theme, isPopup = false }) => {
                                                 >
                                                     {msg.sticker}
                                                 </motion.span>
+                                            ) : isVoice ? (
+                                                <div className="flex items-center gap-2 min-w-[150px]">
+                                                    <motion.div
+                                                        animate={playingVoiceId === msg.id ? { scale: [1, 1.2, 1] } : {}}
+                                                        transition={{ repeat: Infinity, duration: 0.5 }}
+                                                        className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
+                                                    >
+                                                        {playingVoiceId === msg.id ? "⏸" : "▶️"}
+                                                    </motion.div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-0.5">
+                                                            {[...Array(12)].map((_, i) => (
+                                                                <motion.div
+                                                                    key={i}
+                                                                    animate={playingVoiceId === msg.id ? { scaleY: [0.3, 1, 0.3] } : { scaleY: 0.5 + Math.random() * 0.5 }}
+                                                                    transition={playingVoiceId === msg.id ? { repeat: Infinity, duration: 0.3, delay: i * 0.05 } : {}}
+                                                                    className="w-1 h-4 bg-white/60 rounded-full"
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex items-center justify-between mt-1">
+                                                            <span className="text-[9px] opacity-70">
+                                                                {msg.voiceDuration ? `0:${String(msg.voiceDuration).padStart(2, '0')}` : '0:00'}
+                                                            </span>
+                                                            <span className="text-[9px] opacity-50">
+                                                                ⏱️ 2min
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             ) : (
                                                 <p className="text-sm leading-relaxed break-words">{msg.text}</p>
                                             )}
-                                            {!isSticker && (
+                                            {!isSticker && !isVoice && (
                                                 <p className="text-[9px] opacity-60 text-right mt-0.5">
                                                     {formatTime(msg.timestamp)}
                                                 </p>
@@ -588,53 +765,110 @@ const LiveChat = ({ theme, isPopup = false }) => {
 
             {/* Input area */}
             <form onSubmit={sendMessage} className="p-3 bg-[var(--bg-color)] border-t border-[rgba(0,0,0,0.05)]">
-                <div className="flex items-center gap-2">
-                    <motion.button
-                        type="button"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => { setShowStickerPicker(!showStickerPicker); setShowEmojiPicker(false); setShowThemePicker(false); }}
-                        className={`p-2.5 rounded-full transition-colors ${showStickerPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
-                    >
-                        🎭
-                    </motion.button>
-                    <motion.button
-                        type="button"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowStickerPicker(false); setShowThemePicker(false); }}
-                        className={`p-2.5 rounded-full transition-colors ${showEmojiPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
-                    >
-                        😊
-                    </motion.button>
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Message..."
-                        autoComplete="off"
-                        className="flex-1 px-4 py-2.5 rounded-2xl bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] focus:ring-opacity-50 transition-all text-sm"
-                        style={{ fontSize: '16px' }}
-                    />
-                    <motion.button
-                        type="submit"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        disabled={!newMessage.trim()}
-                        className="p-2.5 rounded-full font-semibold transition-all disabled:opacity-30"
-                        style={{
-                            background: newMessage.trim()
-                                ? `linear-gradient(135deg, ${role === "princess" ? "#ec4899, #db2777" : "#646cff, #5558dd"})`
-                                : "rgba(0,0,0,0.1)",
-                            color: newMessage.trim() ? "#fff" : "var(--sub-color)"
-                        }}
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                        </svg>
-                    </motion.button>
-                </div>
+                {/* Recording UI */}
+                {isRecording ? (
+                    <div className="flex items-center gap-3">
+                        <motion.div
+                            animate={{ opacity: [1, 0.5, 1] }}
+                            transition={{ repeat: Infinity, duration: 1 }}
+                            className="w-3 h-3 bg-red-500 rounded-full"
+                        />
+                        <div className="flex-1 flex items-center gap-2">
+                            <span className="text-red-500 font-mono text-sm">{formatRecordingTime(recordingTime)}</span>
+                            <div className="flex-1 flex items-center gap-0.5">
+                                {[...Array(20)].map((_, i) => (
+                                    <motion.div
+                                        key={i}
+                                        animate={{ scaleY: [0.3, 1, 0.3] }}
+                                        transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
+                                        className="w-1 h-4 bg-red-400 rounded-full"
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={cancelRecording}
+                            className="p-2 rounded-full bg-gray-200 text-gray-600"
+                        >
+                            ✕
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={stopRecording}
+                            className="p-2.5 rounded-full bg-green-500 text-white"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                            </svg>
+                        </motion.button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => { setShowStickerPicker(!showStickerPicker); setShowEmojiPicker(false); setShowThemePicker(false); }}
+                            className={`p-2.5 rounded-full transition-colors ${showStickerPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                        >
+                            🎭
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowStickerPicker(false); setShowThemePicker(false); }}
+                            className={`p-2.5 rounded-full transition-colors ${showEmojiPicker ? 'bg-[var(--main-color)] text-white' : 'hover:bg-[rgba(0,0,0,0.05)]'}`}
+                        >
+                            😊
+                        </motion.button>
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Message..."
+                            autoComplete="off"
+                            className="flex-1 px-4 py-2.5 rounded-2xl bg-[rgba(0,0,0,0.05)] text-[var(--text-color)] placeholder-[var(--sub-color)] outline-none focus:ring-2 focus:ring-[var(--main-color)] focus:ring-opacity-50 transition-all text-sm"
+                            style={{ fontSize: '16px' }}
+                        />
+                        {newMessage.trim() ? (
+                            <motion.button
+                                type="submit"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="p-2.5 rounded-full font-semibold transition-all"
+                                style={{
+                                    background: `linear-gradient(135deg, ${role === "princess" ? "#ec4899, #db2777" : "#646cff, #5558dd"})`,
+                                    color: "#fff"
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                                </svg>
+                            </motion.button>
+                        ) : (
+                            <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={startRecording}
+                                className="p-2.5 rounded-full transition-all"
+                                style={{
+                                    background: `linear-gradient(135deg, ${role === "princess" ? "#ec4899, #db2777" : "#646cff, #5558dd"})`,
+                                    color: "#fff"
+                                }}
+                            >
+                                🎤
+                            </motion.button>
+                        )}
+                    </div>
+                )}
             </form>
 
             {/* Audio Call Modal */}
